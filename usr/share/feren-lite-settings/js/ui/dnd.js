@@ -511,7 +511,7 @@ var _Draggable = new Lang.Class({
                                                 event.get_time())) {
                     // If it accepted the drop without taking the actor,
                     // handle it ourselves.
-                    if (!this._dragActor.is_finalized() && this._dragActor.get_parent() === Main.uiGroup) {
+                    if (this._dragActor.get_parent() == Main.uiGroup) {
                         if (this._restoreOnSuccess) {
                             this._restoreDragActor(event.get_time());
                             return true;
@@ -635,7 +635,7 @@ var _Draggable = new Lang.Class({
     },
 
     _dragComplete: function() {
-        if (!this._actorDestroyed && !this._dragActor.is_finalized())
+        if (!this._actorDestroyed)
             Cinnamon.util_set_hidden_from_pick(this._dragActor, false);
 
         this._ungrabEvents();
@@ -755,36 +755,23 @@ GenericDragItemContainer.prototype = {
         this.actor.add_actor(this.child);
     },
 
-    animateIn: function(onCompleteFunc) {
-        if (!this.child) {
-            if (typeof(onCompleteFunc) === 'function')
-                onCompleteFunc();
+    animateIn: function() {
+        if (this.child == null)
             return;
-        }
 
         this.childScale = 0;
         this.childOpacity = 0;
-
-        let params = { childScale: 1.0,
-                       childOpacity: 255,
-                       time: DND_ANIMATION_TIME,
-                       transition: 'easeOutQuad' };
-
-        if (typeof(onCompleteFunc) === 'function')
-            params.onComplete = onCompleteFunc;
-
-        Tweener.addTween(this, params);
+        Tweener.addTween(this,
+                         { childScale: 1.0,
+                           childOpacity: 255,
+                           time: DND_ANIMATION_TIME,
+                           transition: 'easeOutQuad'
+                         });
     },
 
-    animateOutAndDestroy: function(onCompleteFunc) {
-        let _onComplete = () => {
-            if (typeof(onCompleteFunc) === 'function')
-                onCompleteFunc();
+    animateOutAndDestroy: function() {
+        if (this.child == null) {
             this.actor.destroy();
-        };
-
-        if (!this.child) {
-            _onComplete();
             return;
         }
 
@@ -795,11 +782,13 @@ GenericDragItemContainer.prototype = {
                            childOpacity: 0,
                            time: DND_ANIMATION_TIME,
                            transition: 'easeOutQuad',
-                           onComplete: _onComplete });
+                           onComplete: Lang.bind(this, function() {
+                               this.actor.destroy();
+                           })
+                         });
     },
 
     set childScale(scale) {
-        if (this.child.is_finalized()) return;
         this._childScale = scale;
 
         if (this.child == null)
@@ -815,7 +804,6 @@ GenericDragItemContainer.prototype = {
     },
 
     set childOpacity(opacity) {
-        if (this.child.is_finalized()) return;
         this._childOpacity = opacity;
 
         if (this.child == null)
@@ -843,12 +831,16 @@ GenericDragPlaceholderItem.prototype = {
     }
 };
 
-var LauncherDraggable = class {
-    constructor(launchersBox) {
-        this.launchersBox = launchersBox;
-    }
+function LauncherDraggable() {
+    this._init();
+}
 
-    getId() {
+LauncherDraggable.prototype = {
+    _init: function() {
+        this.launchersBox = null;
+    },
+
+    getId: function() {
         /* Implemented by draggable launchers */
         global.logError("Could not complete drag-and-drop.  Launcher does not implement LauncherDraggable");
     }

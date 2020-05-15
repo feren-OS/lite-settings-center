@@ -18,29 +18,13 @@ from xml.etree import ElementTree
 from PIL import Image
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gio, Gtk, GObject, Gdk, GdkPixbuf, Pango, GLib
+from gi.repository import Gio, Gtk, GObject, Gdk, Pango, GLib
 
 import config
-from SettingsWidgets import SidePage
-from xapp.GSettingsWidgets import *
+sys.path.append(config.currentPath + "/bin")
+from GSettingsWidgets import *
 
-gettext.install("cinnamon", "/usr/share/locale")
-
-BACKGROUND_COLOR_SHADING_TYPES = [
-    ("solid", _("Solid color")),
-    ("horizontal", _("Horizontal gradient")),
-    ("vertical", _("Vertical gradient"))
-]
-
-BACKGROUND_PICTURE_OPTIONS = [
-    ("none", _("No picture")),
-    ("wallpaper", _("Mosaic")),
-    ("centered", _("Centered")),
-    ("scaled", _("Scaled")),
-    ("stretched", _("Stretched")),
-    ("zoom", _("Zoom")),
-    ("spanned", _("Spanned"))
-]
+gettext.install("lite-settings", "/usr/share/locale")
 
 BACKGROUND_ICONS_SIZE = 100
 
@@ -96,69 +80,6 @@ def apply_orientation(im):
         pass # log.exception("Error applying EXIF Orientation tag")
     return im
 
-
-class ColorsWidget(SettingsWidget):
-    def __init__(self, size_group):
-        super(ColorsWidget, self).__init__(dep_key=None)
-
-        #gsettings
-        self.settings = Gio.Settings("org.cinnamon.desktop.background")
-
-        # settings widgets
-        combo = Gtk.ComboBox()
-        key = 'color-shading-type'
-        value = self.settings.get_string(key)
-        renderer_text = Gtk.CellRendererText()
-        combo.pack_start(renderer_text, True)
-        combo.add_attribute(renderer_text, "text", 1)
-        model = Gtk.ListStore(str, str)
-        combo.set_model(model)
-        combo.set_id_column(0)
-        for option in BACKGROUND_COLOR_SHADING_TYPES:
-            iter = model.append([option[0], option[1]])
-            if value == option[0]:
-                combo.set_active_iter(iter)
-        combo.connect('changed', self.on_combo_changed, key)
-
-        self.content_widget = Gtk.Box(valign=Gtk.Align.CENTER)
-        self.content_widget.pack_start(combo, False, False, 2)
-
-        # Primary color
-        for key in ['primary-color', 'secondary-color']:
-            color_button = Gtk.ColorButton()
-            color_button.set_use_alpha(True)
-            rgba = Gdk.RGBA()
-            rgba.parse(self.settings.get_string(key))
-            color_button.set_rgba(rgba)
-            color_button.connect('color-set', self.on_color_changed, key)
-            self.content_widget.pack_start(color_button, False, False, 2)
-
-        # Keep a ref on the second color button (so we can hide/show it when appropriate)
-        self.color2_button = color_button
-        self.color2_button.set_no_show_all(True)
-        self.show_or_hide_color2(value)
-        self.add_to_size_group(size_group)
-        self.label = SettingsLabel(_("Background color"))
-        self.pack_start(self.label, False, False, 0)
-        self.pack_end(self.content_widget, False, False, 0)
-
-    def on_color_changed(self, widget, key):
-        color_string = widget.get_color().to_string()
-        self.settings.set_string(key, color_string)
-
-    def on_combo_changed(self, widget, key):
-        tree_iter = widget.get_active_iter()
-        if tree_iter != None:
-            value = widget.get_model()[tree_iter][0]
-            self.settings.set_string(key, value)
-            self.show_or_hide_color2(value)
-
-    def show_or_hide_color2(self, value):
-        if (value == 'solid'):
-            self.color2_button.hide()
-        else:
-            self.color2_button.show()
-
 class Module:
     name = "backgrounds"
     category = "appear"
@@ -176,10 +97,7 @@ class Module:
             self.sidePage.add_widget(self.sidePage.stack)
 
             self.shown_collection = None  # Which collection is displayed in the UI
-
-            self._background_schema = Gio.Settings(schema="org.cinnamon.desktop.background")
-            self._slideshow_schema = Gio.Settings(schema="org.cinnamon.desktop.background.slideshow")
-            self._slideshow_schema.connect("changed::slideshow-enabled", self.on_slideshow_enabled_changed)
+            self._slideshow_schema = Gio.Settings(schema="org.feren.lite-settings.background.slideshow")
             self.add_folder_dialog = Gtk.FileChooserDialog(title=_("Add Folder"),
                                                            action=Gtk.FileChooserAction.SELECT_FOLDER,
                                                            buttons=(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
@@ -289,52 +207,156 @@ class Module:
 
             self.sidePage.stack.add_titled(page, "settings", _("Settings"))
 
-            widget = GSettingsSwitch(_("Play backgrounds as a slideshow"), "org.cinnamon.desktop.background.slideshow", "slideshow-enabled")
+            global widgetend1
+            global widgetend2
+            global widgetend3
+
+            if os.path.exists("/usr/bin/xfdesktop-settings"):
+                image = Gtk.Image.new_from_icon_name("preferences-desktop-wallpaper", Gtk.IconSize.BUTTON)
+                image.props.use_fallback=True
+                widget = SettingsWidget()
+                button = Gtk.Button(label="Open the Xfce Background Changer for wallpaper changing across workspaces", image=image)
+                button.set_tooltip_text(_("Opens the Classic Xfce Background Changer"))
+                button.connect("clicked", self.on_button_clicked)
+                widget.pack_start(button, True, True, 0)
+                settings.add_row(widget)
+
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Play backgrounds as a slideshow")
+            widgetend1 = Gtk.Switch()
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfce4-desktop backdrop/screen0/monitor0/workspace0 backdrop-cycle-enable")
+            if widgetstate.upper() == "FALSE":
+                widgetend1.set_state(False)
+                self.icon_view.set_sensitive(True)
+                self.icon_view.set_selection_mode(Gtk.SelectionMode.SINGLE)
+            else:
+                widgetend1.set_state(True)
+                self.icon_view.set_sensitive(False)
+                self.icon_view.set_selection_mode(Gtk.SelectionMode.NONE)
+            widgetend1.connect('state-set', self.btn_slideshowswitch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend1, False, True, 0)
+            settings.add_row(widget)
+            
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Delay (minutes)")
+            ad = Gtk.Adjustment(0, 1, 99999, 1, 0, 0)
+            widgetend2 = Gtk.SpinButton(adjustment=ad, climb_rate=1, digits=0)
+            widgetend2.set_sensitive(False)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfce4-desktop backdrop/screen0/monitor0/workspace0 backdrop-cycle-timer")
+            widgetend2.set_value(int(widgetstate))
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend2.set_sensitive(False)
+            else:
+                widgetend2.set_sensitive(True)
+            widgetend2.connect('value-changed', self.btn_delayspin_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend2, False, True, 0)
             settings.add_row(widget)
 
-            widget = GSettingsSpinButton(_("Delay"), "org.cinnamon.desktop.background.slideshow", "delay", _("minutes"), 1, 1440)
-            settings.add_reveal_row(widget, "org.cinnamon.desktop.background.slideshow", "slideshow-enabled")
-
-            widget = GSettingsSwitch(_("Play images in random order"), "org.cinnamon.desktop.background.slideshow", "random-order")
-            settings.add_reveal_row(widget, "org.cinnamon.desktop.background.slideshow", "slideshow-enabled")
-
-            widget = GSettingsComboBox(_("Picture aspect"), "org.cinnamon.desktop.background", "picture-options", BACKGROUND_PICTURE_OPTIONS, size_group=size_group)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Play images in random order")
+            widgetend3 = Gtk.Switch()
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfce4-desktop backdrop/screen0/monitor0/workspace0 backdrop-cycle-random-order")
+            if widgetstate.upper() == "FALSE":
+                widgetend3.set_state(False)
+            else:
+                widgetend3.set_state(True)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend3.set_sensitive(False)
+            else:
+                widgetend3.set_sensitive(True)
+            widgetend3.connect('state-set', self.btn_randomswitch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend3, False, True, 0)
             settings.add_row(widget)
 
-            widget = ColorsWidget(size_group)
+            global combo1
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Picture aspect")
+            combo1 = Gtk.ComboBoxText()
+            combo1.append_text('No picture')
+            combo1.append_text('Centred')
+            combo1.append_text('Mosaic')
+            combo1.append_text('Stretched')
+            combo1.append_text('Scaled')
+            combo1.append_text('Zoom')
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfce4-desktop backdrop/screen0/monitor0/workspace0 image-style")
+            combo1.connect('changed', self.on_wallpaper_style_changed)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(combo1, False, True, 0)
             settings.add_row(widget)
+            combo1.set_active(int(widgetstate))
+
+            global combo2
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Background gradient")
+            combo2 = Gtk.ComboBoxText()
+            combo2.append_text('None')
+            combo2.append_text('Horizontal')
+            combo2.append_text('Vertical')
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfce4-desktop backdrop/screen0/monitor0/workspace0 color-style")
+            combo2.connect('changed', self.on_gradient_style_changed)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(combo2, False, True, 0)
+            settings.add_row(widget)
+            combo2.set_active(int(widgetstate))
+
+    def on_button_clicked(self, button):
+        subprocess.Popen(["xfdesktop-settings"])
+
+    def btn_slideshowswitch_click(self, switch, toggled):
+        global widgetend1
+        global widgetend2
+        global widgetend3
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","backdrop-cycle-enable",str(not widgetend1.get_state()).lower()])
+        if str(not widgetend1.get_state()).upper() == "FALSE":
+            widgetend2.set_sensitive(False)
+            widgetend3.set_sensitive(False)
+            self.icon_view.set_sensitive(True)
+            self.icon_view.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        else:
+            widgetend2.set_sensitive(True)
+            widgetend3.set_sensitive(True)
+            self.icon_view.set_sensitive(False)
+            self.icon_view.set_selection_mode(Gtk.SelectionMode.NONE)
+    
+    def btn_delayspin_click(self, spinbutton):
+        global widgetend2
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","backdrop-cycle-timer",str(int(widgetend2.get_value()))])
+
+    def btn_randomswitch_click(self, switch, toggled):
+        global widgetend3
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","backdrop-cycle-random-order",str(not widgetend3.get_state()).lower()])
 
     def is_row_separator(self, model, iter, data):
         return model.get_value(iter, 0)
 
-    def on_slideshow_enabled_changed(self, settings, key):
-        if self._slideshow_schema.get_boolean("slideshow-enabled"):
-            self.icon_view.set_sensitive(False)
-            self.icon_view.set_selection_mode(Gtk.SelectionMode.NONE)
-        else:
-            self.icon_view.set_sensitive(True)
-            self.icon_view.set_selection_mode(Gtk.SelectionMode.SINGLE)
-
     def get_system_backgrounds(self):
         picture_list = []
         folder_list = []
-        properties_dir = "/usr/share/cinnamon-background-properties"
+        properties_dir = "/usr/share/lite-background-properties"
         backgrounds = []
         if os.path.exists(properties_dir):
             for i in os.listdir(properties_dir):
                 if i.endswith(".xml"):
                     xml_path = os.path.join(properties_dir, i)
                     display_name = i.replace(".xml", "").replace("-", " ").replace("_", " ").split(" ")[-1].capitalize()
-                    icon = "preferences-desktop-wallpaper-symbolic"
+                    icon = "preferences-desktop-wallpaper"
                     order = 10
                     # Special case for Linux Mint. We don't want to use 'start-here' here as it wouldn't work depending on the theme.
-                    # Also, other distros should get equal treatment. If they define cinnamon-backgrounds and use their own distro name, we should add support for it.
+                    # Also, other distros should get equal treatment. If they define lite-settings-backgrounds and use their own distro name, we should add support for it.
                     if display_name == "Retro":
-                        icon = "document-open-recent-symbolic"
+                        icon = "cs-retro"
                         order = 20 # place retro bgs at the end
                     if display_name == "Linuxmint":
                         display_name = "Linux Mint"
-                        icon = "linuxmint-logo-badge-symbolic"
+                        icon = "cs-linuxmint"
                         order = 0
                     backgrounds.append([[False, icon, display_name, xml_path, BACKGROUND_COLLECTION_TYPE_XML], display_name, order])
 
@@ -344,7 +366,7 @@ class Module:
 
     def get_user_backgrounds(self):
         self.user_backgrounds = []
-        path = os.path.expanduser("~/.cinnamon/backgrounds/user-folders.lst")
+        path = os.path.expanduser("~/.lite-settings/backgrounds/user-folders.lst")
         if os.path.exists(path):
             with open(path) as f:
                 folders = f.readlines()
@@ -352,13 +374,13 @@ class Module:
                 folder_path = line.strip("\n")
                 folder_name = folder_path.split("/")[-1]
                 if folder_path == self.xdg_pictures_directory:
-                    icon = "folder-pictures-symbolic"
+                    icon = "folder-pictures"
                 else:
-                    icon = "folder-symbolic"
+                    icon = "folder"
                 self.user_backgrounds.append([False, icon, folder_name, folder_path, BACKGROUND_COLLECTION_TYPE_DIRECTORY])
         else:
             # Add XDG PICTURE DIR
-            self.user_backgrounds.append([False, "folder-pictures-symbolic", self.xdg_pictures_directory.split("/")[-1], self.xdg_pictures_directory, BACKGROUND_COLLECTION_TYPE_DIRECTORY])
+            self.user_backgrounds.append([False, "folder-pictures", self.xdg_pictures_directory.split("/")[-1], self.xdg_pictures_directory, BACKGROUND_COLLECTION_TYPE_DIRECTORY])
             self.update_folder_list()
 
     def format_source(self, type, path):
@@ -425,14 +447,45 @@ class Module:
             return self.icon_view.get_model().get(iter, 0)[0]
         return None
 
+    def on_wallpaper_style_changed(self, dropdown):
+        global combo1
+        option=combo1.get_active()
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0","image-style",str(option)])
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","image-style",str(option)])
+    
+    def on_gradient_style_changed(self, dropdown):
+        global combo2
+        option=combo2.get_active()
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0","color-style",str(option)])
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","color-style",str(option)])
+
     def on_wallpaper_selection_changed(self, iconview):
+        global combo1
         wallpaper = self.get_selected_wallpaper()
         if wallpaper:
             for key in wallpaper:
                 if key == "filename":
-                    self._background_schema.set_string("picture-uri", "file://" + wallpaper[key])
+                    subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0","image-path",wallpaper[key]])
+                    subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0","image-show","true"])
+                    subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","last-image",wallpaper[key]])
                 elif key == "options":
-                    self._background_schema.set_string("picture-options", wallpaper[key])
+                    if wallpaper[key] == "none":
+                        option=0
+                    elif wallpaper[key] == "centered":
+                        option=1
+                    elif wallpaper[key] == "wallpaper":
+                        option=2
+                    elif wallpaper[key] == "stretched":
+                        option=3
+                    elif wallpaper[key] == "scaled":
+                        option=4
+                    elif wallpaper[key] == "zoom":
+                        option=5
+                    else:
+                        option=4
+                    subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0","image-style",str(option)])
+                    subprocess.Popen(["./bin/ManageXfconf.sh","set","xfce4-desktop","backdrop/screen0/monitor0/workspace0","image-style",str(option)])
+                    combo1.set_active(option)
 
     def add_new_folder(self):
         res = self.add_folder_dialog.run()
@@ -445,9 +498,9 @@ class Module:
                     self.add_folder_dialog.hide()
                     return
             if folder_path == self.xdg_pictures_directory:
-                icon = "folder-pictures-symbolic"
+                icon = "folder-pictures"
             else:
-                icon = "folder-symbolic"
+                icon = "folder"
             self.user_backgrounds.append([False, icon, folder_name, folder_path, BACKGROUND_COLLECTION_TYPE_DIRECTORY])
             self.collection_store.append([False, icon, folder_name, folder_path, BACKGROUND_COLLECTION_TYPE_DIRECTORY])
             self.update_folder_list()
@@ -467,10 +520,10 @@ class Module:
                         break
 
     def update_folder_list(self):
-        path = os.path.expanduser("~/.cinnamon/backgrounds")
+        path = os.path.expanduser("~/.lite-settings/backgrounds")
         if not os.path.exists(path):
             os.makedirs(path, mode=0o755, exist_ok=True)
-        path = os.path.expanduser("~/.cinnamon/backgrounds/user-folders.lst")
+        path = os.path.expanduser("~/.lite-settings/backgrounds/user-folders.lst")
         if len(self.user_backgrounds) == 0:
             file_data = ""
         else:
@@ -500,10 +553,6 @@ class Module:
                     picture_list += self.parse_xml_backgrounds_list(path)
 
             self.icon_view.set_pictures_list(picture_list, path)
-            if self._slideshow_schema.get_boolean("slideshow-enabled"):
-                self.icon_view.set_sensitive(False)
-            else:
-                self.icon_view.set_sensitive(True)
 
     def splitLocaleCode(self, localeCode):
         try:
@@ -565,6 +614,18 @@ class Module:
             print(detail)
             return []
 
+    def update_secondary_revealer(self, settings, key):
+        show = False
+
+        if settings.get_string("picture-options") in PICTURE_OPTIONS_NEEDS_COLOR:
+            #the picture is taking all the width
+            if settings.get_string("color-shading-type") != "solid":
+                #it is using a gradient, so need to show
+                show = True
+
+        self.secondary_color_revealer.set_reveal_child(show)
+
+
 class PixCache(object):
 
     def __init__(self):
@@ -600,7 +661,7 @@ class PixCache(object):
                         loaded = True
                     except Exception as detail:
                         # most likely either the file is corrupted, or the file was pickled using the
-                        # python2 version of cinnamon settings. Either way, we want to ditch the current
+                        # python2 version of lite-settings settings. Either way, we want to ditch the current
                         # cache file and generate a new one. This is still backward compatible with older
                         # Cinnamon versions
                         os.remove(cache_filename)
@@ -794,7 +855,7 @@ class ThreadedIconView(Gtk.IconView):
                     if backgroundNode.tag == "static":
                         for staticNode in backgroundNode:
                             if staticNode.tag == "file":
-                                if len(staticNode) > 0 and staticNode[-1].tag == "size":
+                                if staticNode[-1].tag == "size":
                                     return staticNode[-1].text
                                 return staticNode.text
             print("Could not find filename in %s" % filename)

@@ -32,19 +32,19 @@ const DESKLET_DESTROY_TIME = 0.5;
  *
  * #Desklet is a base class in which other desklets can inherit
  */
-var Desklet = class Desklet {
+function Desklet(metadata, desklet_id){
+    this._init(metadata, desklet_id);
+}
+
+Desklet.prototype = {
     /**
      * _init:
      * @metadata (dictionary): the metadata of the desklet
      * @desklet_id (int): instance id of the desklet
-     *
+     * 
      * Constructor function
      */
-    constructor() {
-        return this._init.apply(this, arguments);
-    }
-
-    _init(metadata, desklet_id) {
+    _init: function(metadata, desklet_id){
         this.metadata = metadata;
         this.instance_id = desklet_id;
         this.actor = new St.BoxLayout({reactive: true, track_hover: true, vertical: true});
@@ -78,7 +78,7 @@ var Desklet = class Desklet {
 
         this._drag_end_ids = {"drag-end": 0, "drag-cancelled": 0};
         this._draggable = DND.makeDraggable(this.actor, {restoreOnSuccess: true}, Main.deskletContainer.actor);
-    }
+    },
 
     /**
      * setHeader:
@@ -86,9 +86,9 @@ var Desklet = class Desklet {
      *
      * Sets the header text of the desklet to @header
      */
-    setHeader(header){
+    setHeader: function(header){
         this._header_label.set_text(header);
-    }
+    },
 
     /**
      * setContent:
@@ -98,32 +98,24 @@ var Desklet = class Desklet {
      *
      * Sets the content actor of the desklet as @actor
      */
-    setContent(actor, params){
+    setContent: function(actor, params){
         this.content.set_child(actor);
-    }
+    },
 
     /**
      * on_desklet_removed:
      *
      * Callback when desklet is removed. To be overridden by individual desklets
      */
-    on_desklet_removed(deleteConfig) {
-    }
-
-    /**
-     * on_desklet_reloaded:
-     *
-     * Callback when desklet is reloaded. To be overridden by individual desklets
-     */
-    on_desklet_reloaded() {
-    }
+    on_desklet_removed: function(deleteConfig) {
+    },
 
     /**
      * destroy:
      *
      * Destroys the actor with an fading animation
      */
-    destroy(deleteConfig){
+    destroy: function(deleteConfig){
         Tweener.addTween(this.actor,
                          { opacity: 0,
                            transition: 'linear',
@@ -137,22 +129,22 @@ var Desklet = class Desklet {
         this._menu = null;
         this._menuManager = null;
         this.emit('destroy');
-    }
+    },
 
-    _updateDecoration(){
+    _updateDecoration: function(){
         let dec = global.settings.get_int('desklet-decorations');
         let preventDecorations = this.metadata['prevent-decorations'];
         if (preventDecorations == true){
             dec = 0;
         }
-
+                      
         switch(dec){
         case 0:
-            this._header.hide();
-            this.content.style_class = 'desklet';
+            this._header.hide();    
+            this.content.style_class = 'desklet';        
             break;
         case 1:
-            this._header.hide();
+            this._header.hide();            
             this.content.style_class = 'desklet-with-borders';
             break;
         case 2:
@@ -160,13 +152,13 @@ var Desklet = class Desklet {
             this.content.style_class = 'desklet-with-borders-and-header';
             break;
         }
-    }
+    },
 
-    on_desklet_clicked(event) {
-        // Implemented by Desklets
-    }
+    on_desklet_clicked: function(event) {
+        // Implemented by Desklets        
+    },
 
-    on_desklet_added_to_desktop_internal(userEnabled) {
+    on_desklet_added_to_desktop_internal: function(userEnabled) {
         if (userEnabled) {
             Mainloop.timeout_add(300, Lang.bind(this, function() {
                 let [x, y] = this.actor.get_transformed_position();
@@ -178,7 +170,7 @@ var Desklet = class Desklet {
         }
 
         this.on_desklet_added_to_desktop(userEnabled);
-    }
+    },
 
     /**
      * on_desklet_added_to_desktop:
@@ -187,10 +179,10 @@ var Desklet = class Desklet {
      *
      * This is meant to be overridden in individual applets.
      */
-    on_desklet_added_to_desktop(userEnabled) {
-    }
+    on_desklet_added_to_desktop: function(userEnabled) {
+    },
 
-    _onButtonReleaseEvent(actor, event) {
+    _onButtonReleaseEvent: function(actor, event) {
         if (event.get_button() == 3) {
             this._menu.toggle();
         } else {
@@ -199,56 +191,46 @@ var Desklet = class Desklet {
             }
             this.on_desklet_clicked(event);
         }
-    }
-
-    _trackMouse() {
+    },
+    
+    _trackMouse: function() {
         if(!Main.layoutManager.isTrackingChrome(this.actor)) {
             Main.layoutManager.addChrome(this.actor, {doNotAdd: true});
             this._isTracked = true;
         }
-    }
-
-    _untrackMouse() {
+    },
+    
+    _untrackMouse: function() {
         if(Main.layoutManager.isTrackingChrome(this.actor)) {
             Main.layoutManager.untrackChrome(this.actor);
             this._isTracked = false;
         }
-    }
+    },
 
-    _onRemoveDesklet(){
+    _onRemoveDesklet: function(){
         DeskletManager.removeDesklet(this._uuid, this.instance_id);
-    }
-
-    finalizeContextMenu() {
+    },
+    
+    finalizeContextMenu: function() {
         this.context_menu_separator = new PopupMenu.PopupSeparatorMenuItem();
         if (this._menu._getMenuItems().length > 0) {
             this._menu.addMenuItem(this.context_menu_separator);
         }
-
+        
         this.context_menu_item_about = new PopupMenu.PopupMenuItem(_("About..."))
         this.context_menu_item_about.connect("activate", Lang.bind(this, this.openAbout));
         this._menu.addMenuItem(this.context_menu_item_about);
-
-        if (!this._meta["hide-configuration"] && GLib.file_test(this._meta["path"] + "/settings-schema.json", GLib.FileTest.EXISTS)) {
+        
+        if (!this._meta["hide-configuration"] && GLib.file_test(this._meta["path"] + "/settings-schema.json", GLib.FileTest.EXISTS)) {            
             this.context_menu_item_configure = new PopupMenu.PopupMenuItem(_("Configure..."));
             this.context_menu_item_configure.connect("activate", Lang.bind(this, this.configureDesklet));
             this._menu.addMenuItem(this.context_menu_item_configure);
         }
-
+        
         this.context_menu_item_remove = new PopupMenu.PopupMenuItem(_("Remove this desklet"));
-        this.context_menu_item_remove.connect("activate", Lang.bind(this, function(actor, event) {
-            if (Clutter.ModifierType.CONTROL_MASK & Cinnamon.get_event_state(event)) {
-                this._onRemoveDesklet();
-            } else {
-                let dialog = new ModalDialog.ConfirmDialog(
-                    _("Are you sure you want to remove %s?").format(this._meta.name),
-                    () => this._onRemoveDesklet()
-                );
-                dialog.open();
-            }
-        }));
-        this._menu.addMenuItem(this.context_menu_item_remove);
-    }
+        this.context_menu_item_remove.connect("activate", Lang.bind(this, this._onRemoveDesklet));
+        this._menu.addMenuItem(this.context_menu_item_remove);            
+    },
 
     /**
      * highlight:
@@ -256,16 +238,16 @@ var Desklet = class Desklet {
      *
      * Turns on/off the highlight of the desklet
      */
-    highlight(highlight) {
+    highlight: function(highlight) {
         this.content.change_style_pseudo_class("highlight", highlight);
-    }
+    },
 
-    openAbout() {
-        Util.spawnCommandLine("xlet-about-dialog desklets " + this._uuid);
-    }
+    openAbout: function() {
+        new ModalDialog.SpicesAboutDialog(this._meta, "desklets");
+    },
 
-    configureDesklet() {
+    configureDesklet: function() {
         Util.spawnCommandLine("xlet-settings desklet " + this._uuid + " " + this.instance_id);
     }
-}
+};
 Signals.addSignalMethods(Desklet.prototype);

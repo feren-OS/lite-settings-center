@@ -7,8 +7,7 @@ import os
 import re
 import threading
 
-from SettingsWidgets import SidePage
-from xapp.GSettingsWidgets import *
+from GSettingsWidgets import *
 
 
 def killProcess(process):
@@ -109,8 +108,7 @@ def createSystemInfos():
         # Normalize spacing in distribution name
         s = re.sub('\s{2,}', ' ', s)
         infos.append((_("Operating System"), s))
-    if 'CINNAMON_VERSION' in os.environ:
-        infos.append((_("Cinnamon Version"), os.environ['CINNAMON_VERSION']))
+    infos.append((_("Xfce Version"), subprocess.getoutput("./bin/getxfcever.sh")))
     infos.append((_("Linux Kernel"), platform.release()))
     infos.append((_("Processor"), processorName))
     if memunit == "kB":
@@ -161,36 +159,6 @@ class Module:
                 labelKey.get_style_context().add_class("dim-label")
                 labelValue = Gtk.Label.new(value)
                 labelValue.set_selectable(True)
-                labelValue.set_line_wrap(True)
                 widget.pack_end(labelValue, False, False, 0)
                 settings.add_row(widget)
-
-            if os.path.exists("/usr/bin/upload-system-info"):
-                widget = SettingsWidget()
-
-                spinner = Gtk.Spinner(visible=True)
-                button = Gtk.Button(label=_("Upload system information"),
-                                    tooltip_text=_("No personal information included"),
-                                    always_show_image=True,
-                                    image=spinner)
-                button.connect("clicked", self.on_button_clicked, spinner)
-                widget.pack_start(button, True, True, 0)
-                settings.add_row(widget)
-
-    def on_button_clicked(self, button, spinner):
-
-        try:
-            subproc = Gio.Subprocess.new(["upload-system-info"], Gio.SubprocessFlags.NONE)
-            subproc.wait_check_async(None, self.on_subprocess_complete, spinner)
-            spinner.start()
-        except GLib.Error as e:
-            print("upload-system-info failed to run: %s" % e.message)
-
-    def on_subprocess_complete(self, subproc, result, spinner):
-        spinner.stop()
-
-        try:
-            success = subproc.wait_check_finish(result)
-        except GLib.Error as e:
-            print("upload-system-info failed: %s" % e.message)
 

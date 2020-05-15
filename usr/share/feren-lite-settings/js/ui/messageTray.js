@@ -433,7 +433,6 @@ Notification.prototype = {
         // 'transient' is a reserved keyword in JS, so we have to use an alternate variable name
         this.isTransient = false;
         this.expanded = false;
-        this.silent = false;
         this._destroyed = false;
         this._useActionIcons = false;
         this._customContent = false;
@@ -531,11 +530,9 @@ Notification.prototype = {
                                         titleMarkup: false,
                                         bannerMarkup: false,
                                         bodyMarkup: false,
-                                        silent: false,
                                         clear: false });
 
         this._customContent = params.customContent;
-        this.silent = params.silent;
 
         let oldFocus = global.stage.key_focus;
 
@@ -1660,6 +1657,8 @@ MessageTray.prototype = {
     },
 
     _showNotification: function() {
+        this._notificationTimeoutId = 1; // this prevents a race condition with the messagetray wanting
+                                         // to hide a notification before it's done showing it, when updating from applet
         this._notification = this._notificationQueue.shift();
         if (this._notification.actor._parent_container) {
             this._notification.collapseCompleted();
@@ -1691,9 +1690,7 @@ MessageTray.prototype = {
 
         let margin = this._notification._table.get_theme_node().get_length('margin-from-right-edge-of-screen');
         this._notificationBin.x = monitor.x + monitor.width - this._notification._table.width - margin - rightGap;
-        if (!this._notification.silent || this._notification.urgency >= Urgency.HIGH) {
-            Main.soundManager.play('notification');
-        }
+        Main.soundManager.play('notification');
         if (this._notification.urgency == Urgency.CRITICAL) {
             Main.layoutManager._chrome.modifyActorParams(this._notificationBin, { visibleInFullscreen: true });
         } else {
@@ -1771,8 +1768,7 @@ MessageTray.prototype = {
    },
 
     _showNotificationCompleted: function() {
-        this._updateNotificationTimeout(0);
-
+        this._notificationTimeoutId = 0;
         if (this._notification.urgency != Urgency.CRITICAL) {
             this._updateNotificationTimeout(NOTIFICATION_TIMEOUT * 1000);
         } else if (AppletManager.get_role_provider_exists(AppletManager.Roles.NOTIFICATIONS)) {

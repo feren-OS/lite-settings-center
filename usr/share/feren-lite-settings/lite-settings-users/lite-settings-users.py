@@ -9,7 +9,6 @@ import shutil
 import re
 import subprocess
 from random import randint
-from setproctitle import setproctitle
 
 import PIL
 from PIL import Image
@@ -18,7 +17,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("AccountsService", "1.0")
 from gi.repository import Gtk, GObject, Gio, GdkPixbuf, AccountsService, GLib
 
-gettext.install("cinnamon", "/usr/share/locale")
+gettext.install("lite-settings", "/usr/share/locale")
 
 class PrivHelper(object):
     """A helper for performing temporary privilege drops. Necessary for
@@ -456,8 +455,7 @@ class Module:
     def __init__(self):
         try:
             self.builder = Gtk.Builder()
-            self.builder.set_translation_domain('cinnamon') # let it translate!
-            self.builder.add_from_file("/usr/share/cinnamon/cinnamon-settings-users/cinnamon-settings-users.ui")
+            self.builder.add_from_file("/usr/share/feren-lite-settings/lite-settings-users/lite-settings-users.ui")
             self.window = self.builder.get_object("main_window")
             self.window.connect("destroy", Gtk.main_quit)
 
@@ -513,7 +511,7 @@ class Module:
             self.face_image = Gtk.Image()
             self.face_image.set_size_request(96, 96)
             self.face_button.set_image(self.face_image)
-            self.face_image.set_from_file("/usr/share/cinnamon/faces/user-generic.png")
+            self.face_image.set_from_file("/usr/share/pixmaps/faces/user-generic.png")
             self.face_button.set_alignment(0.0, 0.5)
             self.face_button.set_tooltip_text(_("Click to change the picture"))
 
@@ -527,7 +525,7 @@ class Module:
             row = 0
             col = 0
             num_cols = 4
-            face_dirs = ["/usr/share/cinnamon/faces"]
+            face_dirs = ["/usr/share/pixmaps/faces"]
             for face_dir in face_dirs:
                 if os.path.exists(face_dir):
                     pictures = sorted(os.listdir(face_dir))
@@ -674,10 +672,6 @@ class Module:
                 image.thumbnail((96, 96), Image.ANTIALIAS)
                 face_path = os.path.join(user.get_home_dir(), ".face")
                 try:
-                    try:
-                        os.remove(face_path)
-                    except OSError:
-                        pass
                     priv_helper.drop_privs(user)
                     image.save(face_path, "png")
                 finally:
@@ -714,14 +708,9 @@ class Module:
                 user = model[treeiter][INDEX_USER_OBJECT]
                 user.set_icon_file(path)
                 self.face_image.set_from_file(path)
-                face_path = os.path.join(user.get_home_dir(), ".face")
                 try:
-                    try:
-                        os.remove(face_path)
-                    except OSError:
-                        pass
                     priv_helper.drop_privs(user)
-                    shutil.copy(path, face_path)
+                    shutil.copy(path, os.path.join(user.get_home_dir(), ".face"))
                 finally:
                     priv_helper.restore_privs()
                 model.set_value(treeiter, INDEX_USER_PICTURE, GdkPixbuf.Pixbuf.new_from_file_at_size(path, 48, 48))
@@ -764,7 +753,7 @@ class Module:
             if os.path.exists(user.get_icon_file()):
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(user.get_icon_file(), 48, 48)
             else:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/cinnamon/faces/user-generic.png", 48, 48)
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/pixmaps/faces/user-generic.png", 48, 48)
             description = "<b>%s</b>\n%s" % (user.get_real_name(), user.get_user_name())
             piter = self.users.append(None, [user, pixbuf, description])
         self.users_treeview.set_model(self.users)
@@ -825,7 +814,7 @@ class Module:
             else:
                 if message != "":
                     print(message)
-                self.face_image.set_from_file("/usr/share/cinnamon/faces/user-generic.png")
+                self.face_image.set_from_file("/usr/share/pixmaps/faces/user-generic.png")
 
             groups = []
             for group in grp.getgrall():
@@ -884,7 +873,7 @@ class Module:
             username = dialog.username_entry.get_text()
             new_user = self.accountService.create_user(username, fullname, account_type)
             new_user.set_password_mode(AccountsService.UserPasswordMode.NONE)
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/cinnamon/faces/user-generic.png", 48, 48)
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/pixmaps/faces/user-generic.png", 48, 48)
             description = "<b>%s</b>\n%s" % (fullname, username)
             piter = self.users.append(None, [new_user, pixbuf, description])
             # Add the user to his/her own group and sudo if Administrator was selected
@@ -961,6 +950,5 @@ class Module:
 
 
 if __name__ == "__main__":
-    setproctitle("cinnamon-settings-users")
     module = Module()
     Gtk.main()

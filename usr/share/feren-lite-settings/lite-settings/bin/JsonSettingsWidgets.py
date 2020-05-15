@@ -1,37 +1,27 @@
 #!/usr/bin/python3
 
 from gi.repository import Gio, GObject
-from xapp.SettingsWidgets import *
-from SettingsWidgets import SoundFileChooser, TweenChooser, EffectChooser, DateChooser, TimeChooser, Keybinding
-from xapp.GSettingsWidgets import CAN_BACKEND as px_can_backend
-from SettingsWidgets import CAN_BACKEND as c_can_backend
+from SettingsWidgets import *
 from TreeListWidgets import List
-import os
 import collections
 import json
 import operator
 
-can_backend = px_can_backend + c_can_backend
-can_backend.append('List')
+CAN_BACKEND.append("List")
 
 JSON_SETTINGS_PROPERTIES_MAP = {
-    "description"      : "label",
-    "min"              : "mini",
-    "max"              : "maxi",
-    "step"             : "step",
-    "units"            : "units",
-    "show-value"       : "show_value",
-    "select-dir"       : "dir_select",
-    "height"           : "height",
-    "tooltip"          : "tooltip",
-    "possible"         : "possible",
-    "expand-width"     : "expand_width",
-    "columns"          : "columns",
-    "event-sounds"     : "event_sounds",
-    "default_icon"     : "default_icon",
-    "icon_categories"  : "icon_categories",
-    "default_category" : "default_category",
-    "show-seconds"     : "show_seconds"
+    "description"   : "label",
+    "min"           : "mini",
+    "max"           : "maxi",
+    "step"          : "step",
+    "units"         : "units",
+    "show-value"    : "show_value",
+    "select-dir"    : "dir_select",
+    "height"        : "height",
+    "tooltip"       : "tooltip",
+    "possible"      : "possible",
+    "expand-width"  : "expand_width",
+    "columns"       : "columns"
 }
 
 OPERATIONS = ['<=', '>=', '<', '>', '!=', '=']
@@ -126,7 +116,7 @@ class JSONSettingsHandler(object):
         with info["obj"].freeze_notify():
             if "map_get" in info and info["map_get"] != None:
                 value = info["map_get"](value)
-            if value != info["obj"].get_property(info["prop"]) and value is not None:
+            if value != info["obj"].get_property(info["prop"]):
                 info["obj"].set_property(info["prop"], value)
 
     def check_settings(self, *args):
@@ -321,5 +311,5 @@ def json_settings_factory(subclass):
 
     return NewClass
 
-for widget in can_backend:
+for widget in CAN_BACKEND:
     globals()["JSONSettings"+widget] = json_settings_factory(widget)

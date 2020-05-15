@@ -1,102 +1,21 @@
 #!/usr/bin/python3
 
-from SettingsWidgets import SidePage
-from xapp.GSettingsWidgets import *
-from ChooserButtonWidgets import TweenChooserButton, EffectChooserButton
+from gi.repository.Gtk import SizeGroup, SizeGroupMode
 
-EFFECT_SETS = {
-    "cinnamon": ("traditional", "traditional", "traditional", "none",  "none",  "none"),
-    "scale":    ("scale",       "scale",       "scale",       "scale", "scale", "scale"),
-    "fade":     ("fade",        "fade",        "fade",        "scale", "scale", "scale"),
-    "blend":    ("blend",       "blend",       "blend",       "scale", "scale", "scale"),
-    "move":     ("move",        "move",        "move",        "scale", "scale", "scale"),
-    "flyUp":    ("flyUp",       "flyDown",     "flyDown",     "scale", "scale", "scale"),
-    "flyDown":  ("flyDown",     "flyUp",       "flyUp",       "scale", "scale", "scale"),
-    "default":  ("scale",       "scale",       "none",        "none",  "none",  "none")
-}
+from GSettingsWidgets import *
 
-TRANSITIONS_SETS = {
-    "cinnamon": ("easeOutQuad",    "easeOutQuad",   "easeInQuad",  "easeInExpo", "easeNone",       "easeInQuad"),
-    "normal":   ("easeOutSine",    "easeInBack",    "easeInSine",  "easeInBack", "easeOutBounce",  "easeInBack"),
-    "extra":    ("easeOutElastic", "easeOutBounce", "easeOutExpo", "easeInExpo", "easeOutElastic", "easeInExpo"),
-    "fade":     ("easeOutQuart",   "easeInQuart",   "easeInQuart", "easeInBack", "easeOutBounce",  "easeInBack")
-}
+import subprocess
 
-TIME_SETS = {
-    "cinnamon": (100, 120, 160, 100, 100, 100),
-    "slow":     (400, 400, 400, 100, 100, 100),
-    "normal":   (250, 250, 250, 100, 100, 100),
-    "fast":     (100, 100, 100, 100, 100, 100),
-    "default":  (250, 250, 150, 400, 400, 400)
-}
-
-COMBINATIONS = {
-    #  name           effect    transition    time
-    "cinnamon":   ("cinnamon", "cinnamon", "cinnamon"),
-    "scale":      ("scale",    "normal",   "normal"),
-    "fancyScale": ("scale",    "extra",    "slow"),
-    "fade":       ("fade",     "fade",     "normal"),
-    "blend":      ("blend",    "fade",     "normal"),
-    "move":       ("move",     "normal",   "fast"),
-    "flyUp":      ("flyUp",    "normal",   "fast"),
-    "flyDown":    ("flyDown",  "normal",   "fast"),
-    #for previous versions
-    "default":    ("default",  "normal",   "default")
-}
-
-OPTIONS = (
-    ("cinnamon",   _("Cinnamon")),
-    ("scale",      _("Scale")),
-    ("fancyScale", _("Fancy Scale")),
-    ("fade",       _("Fade")),
-    ("blend",      _("Blend")),
-    ("move",       _("Move")),
-    ("flyUp",      _("Fly up, down")),
-    ("flyDown",    _("Fly down, up")),
-    #for previous versions
-    ("default",    _("Default"))
-)
-TYPES = ("map", "close", "minimize", "maximize", "unmaximize", "tile")
-SCHEMA = "org.cinnamon"
-DEP_PATH = "org.cinnamon/desktop-effects"
 KEY_TEMPLATE = "desktop-effects-%s-%s"
-
-class GSettingsTweenChooserButton(TweenChooserButton, PXGSettingsBackend):
-    def __init__(self, schema, key, dep_key):
-        self.key = key
-        self.bind_prop = "tween"
-        self.bind_dir = Gio.SettingsBindFlags.DEFAULT
-        self.bind_object = self
-
-        if schema not in settings_objects:
-            settings_objects[schema] = Gio.Settings.new(schema)
-        self.settings = settings_objects[schema]
-
-        super(GSettingsTweenChooserButton, self).__init__()
-        self.bind_settings()
-
-class GSettingsEffectChooserButton(EffectChooserButton, PXGSettingsBackend):
-    def __init__(self, schema, key, dep_key, options):
-        self.key = key
-        self.bind_prop = "effect"
-        self.bind_dir = Gio.SettingsBindFlags.DEFAULT
-        self.bind_object = self
-
-        if schema not in settings_objects:
-            settings_objects[schema] = Gio.Settings.new(schema)
-        self.settings = settings_objects[schema]
-
-        super(GSettingsEffectChooserButton, self).__init__(options)
-        self.bind_settings()
 
 class Module:
     name = "effects"
     category = "appear"
-    comment = _("Control Cinnamon visual effects.")
+    comment = _("Control XFWM4 visual effects.")
 
     def __init__(self, content_box):
         keywords = _("effects, fancy, window")
-        sidePage = SidePage(_("Effects"), "cs-desktop-effects", keywords, content_box, module=self)
+        sidePage = SidePage(_("Effects"), "wmtweaks", keywords, content_box, module=self)
         self.sidePage = sidePage
 
     def on_module_selected(self):
@@ -106,90 +25,318 @@ class Module:
             self.sidePage.stack = SettingsStack()
             self.sidePage.add_widget(self.sidePage.stack)
 
-            self.schema = Gio.Settings(SCHEMA)
-            self.effect_sets = {}
-            for name, sets in COMBINATIONS.items():
-                self.effect_sets[name] = (EFFECT_SETS[sets[0]], TRANSITIONS_SETS[sets[1]], TIME_SETS[sets[2]])
-
-            # Enable effects
-
             page = SettingsPage()
-            self.sidePage.stack.add_titled(page, "effects", _("Enable effects"))
+            self.sidePage.stack.add_titled(page, "effects", _("Effects"))
 
-            settings = page.add_section(_("Enable Effects"))
+            settings = page.add_section(_("Customise settings"))
 
-            widget = GSettingsSwitch(_("Window effects"), "org.cinnamon.muffin", "desktop-effects")
+            global widgetend1
+            global widgetend2
+            global widgetend3
+            global widgetend4
+            global widgetend5
+            global widgetend6
+            global widgetend7
+            global widgetend8
+            global widgetend9
+            global widgetend10
+            global widgetend11
+            global widgetend12
+            
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Enable display compositing")
+            widgetend1 = Gtk.Switch()
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general use_compositing")
+            if widgetstate.upper() == "FALSE":
+                widgetend1.set_state(False)
+            else:
+                widgetend1.set_state(True)
+            widgetend1.connect('state-set', self.btn_compositeswitch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend1, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Display fullscreen overlay windows directly")
+            widgetend2 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend2.set_sensitive(False)
+            else:
+                widgetend2.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general unredirect_overlays")
+            if widgetstate.upper() == "FALSE":
+                widgetend2.set_state(False)
+            else:
+                widgetend2.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend2.set_state(False)
+            else:
+                widgetend2.set_state(True)
+            widgetend2.connect('state-set', self.btn_widget2switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend2, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Synchronize drawing to the vertical blank")
+            widgetend3 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend3.set_sensitive(False)
+            else:
+                widgetend3.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general sync_to_vblank")
+            if widgetstate.upper() == "FALSE":
+                widgetend3.set_state(False)
+            else:
+                widgetend3.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend3.set_state(False)
+            else:
+                widgetend3.set_state(True)
+            widgetend3.connect('state-set', self.btn_widget3switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend3, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show window's preview in place of icons when cycling through windows")
+            widgetend4 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend4.set_sensitive(False)
+            else:
+                widgetend4.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general cycle_preview")
+            if widgetstate.upper() == "FALSE":
+                widgetend4.set_state(False)
+            else:
+                widgetend4.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend4.set_state(False)
+            else:
+                widgetend4.set_state(True)
+            widgetend4.connect('state-set', self.btn_widget4switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend4, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show shadows under popup windows")
+            widgetend5 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend5.set_sensitive(False)
+            else:
+                widgetend5.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general show_popup_shadow")
+            if widgetstate.upper() == "FALSE":
+                widgetend5.set_state(False)
+            else:
+                widgetend5.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend5.set_state(False)
+            else:
+                widgetend5.set_state(True)
+            widgetend5.connect('state-set', self.btn_widget5switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend5, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show shadows around panels and under dock windows")
+            widgetend6 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend6.set_sensitive(False)
+            else:
+                widgetend6.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general show_dock_shadow")
+            if widgetstate.upper() == "FALSE":
+                widgetend6.set_state(False)
+            else:
+                widgetend6.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend6.set_state(False)
+            else:
+                widgetend6.set_state(True)
+            widgetend6.connect('state-set', self.btn_widget6switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend6, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show shadows under regular windows")
+            widgetend7 = Gtk.Switch()
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend7.set_sensitive(False)
+            else:
+                widgetend7.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general show_frame_shadow")
+            if widgetstate.upper() == "FALSE":
+                widgetend7.set_state(False)
+            else:
+                widgetend7.set_state(True)
+            if widgetstate.upper() == "FALSE":
+                widgetend7.set_state(False)
+            else:
+                widgetend7.set_state(True)
+            widgetend7.connect('state-set', self.btn_widget7switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend7, False, True, 0)
             settings.add_row(widget)
 
-            widget = GSettingsSwitch(_("Effects on dialog boxes"), "org.cinnamon", "desktop-effects-on-dialogs")
-            settings.add_reveal_row(widget, "org.cinnamon", "desktop-effects")
-
-            widget = GSettingsSwitch(_("Effects on menus"), "org.cinnamon", "desktop-effects-on-menus")
-            settings.add_reveal_row(widget, "org.cinnamon", "desktop-effects")
-
-            self.chooser = GSettingsComboBox(_("Effects style"), "org.cinnamon", "desktop-effects-style", OPTIONS)
-            self.chooser.content_widget.connect("changed", self.on_value_changed)
-            settings.add_reveal_row(self.chooser, "org.cinnamon", "desktop-effects")
-
-            widget = GSettingsSwitch(_("Fade effect on Cinnamon scrollboxes (like the Menu application list)"), "org.cinnamon", "enable-vfade")
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Opacity of window decorations")
+            ad1 = Gtk.Adjustment(0, 0, 100, 1, 0, 0)
+            widgetend8 = Gtk.Scale(adjustment=ad1, digits=0)
+            widgetend8.set_draw_value(False)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend8.set_sensitive(False)
+            else:
+                widgetend8.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general frame_opacity")
+            widgetend8.set_value(int(widgetstate))
+            widgetend8.connect('change-value', self.btn_widget8switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend8, True, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Opacity of inactive windows")
+            ad2 = Gtk.Adjustment(0, 0, 100, 1, 0, 0)
+            widgetend9 = Gtk.Scale(adjustment=ad2, digits=0)
+            widgetend9.set_draw_value(False)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend9.set_sensitive(False)
+            else:
+                widgetend9.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general inactive_opacity")
+            widgetend9.set_value(int(widgetstate))
+            widgetend9.connect('change-value', self.btn_widget9switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend9, True, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Opacity of windows during move")
+            ad3 = Gtk.Adjustment(0, 0, 100, 1, 0, 0)
+            widgetend10 = Gtk.Scale(adjustment=ad3, digits=0)
+            widgetend10.set_draw_value(False)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend10.set_sensitive(False)
+            else:
+                widgetend10.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general move_opacity")
+            widgetend10.set_value(int(widgetstate))
+            widgetend10.connect('change-value', self.btn_widget10switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend10, True, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Opacity of windows during resize")
+            ad4 = Gtk.Adjustment(0, 0, 100, 1, 0, 0)
+            widgetend11 = Gtk.Scale(adjustment=ad4, digits=0)
+            widgetend11.set_draw_value(False)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend11.set_sensitive(False)
+            else:
+                widgetend11.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general resize_opacity")
+            widgetend11.set_value(int(widgetstate))
+            widgetend11.connect('change-value', self.btn_widget11switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend11, True, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Opacity of popup windows")
+            ad5 = Gtk.Adjustment(0, 0, 100, 1, 0, 0)
+            widgetend12 = Gtk.Scale(adjustment=ad5, digits=0)
+            widgetend12.set_draw_value(False)
+            if str(widgetend1.get_state()).upper() == "FALSE":
+                widgetend12.set_sensitive(False)
+            else:
+                widgetend12.set_sensitive(True)
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general popup_opacity")
+            widgetend12.set_value(int(widgetstate))
+            widgetend12.connect('change-value', self.btn_widget12switch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend12, True, True, 0)
             settings.add_row(widget)
 
-            widget = GSettingsSwitch(_("Session startup animation"), "org.cinnamon", "startup-animation")
-            settings.add_row(widget)
+            self.builder = self.sidePage.builder
 
-            self.schema.connect("changed::desktop-effects", self.on_desktop_effects_enabled_changed)
+    def btn_compositeswitch_click(self, switch, toggled):
+        global widgetend1
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","use_compositing",str(not widgetend1.get_state()).lower()])
+        if str(widgetend1.get_state()).upper() == "TRUE":
+            widgetend2.set_sensitive(False)
+            widgetend3.set_sensitive(False)
+            widgetend4.set_sensitive(False)
+            widgetend5.set_sensitive(False)
+            widgetend6.set_sensitive(False)
+            widgetend7.set_sensitive(False)
+            widgetend8.set_sensitive(False)
+            widgetend9.set_sensitive(False)
+            widgetend10.set_sensitive(False)
+            widgetend11.set_sensitive(False)
+            widgetend12.set_sensitive(False)
+        else:
+            widgetend2.set_sensitive(True)
+            widgetend3.set_sensitive(True)
+            widgetend4.set_sensitive(True)
+            widgetend5.set_sensitive(True)
+            widgetend6.set_sensitive(True)
+            widgetend7.set_sensitive(True)
+            widgetend8.set_sensitive(True)
+            widgetend9.set_sensitive(True)
+            widgetend10.set_sensitive(True)
+            widgetend11.set_sensitive(True)
+            widgetend12.set_sensitive(True)
 
-            # Customize
+    def btn_widget2switch_click(self, switch, toggled):
+        global widgetend2
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","unredirect_overlays",str(not widgetend2.get_state()).lower()])
 
-            page = SettingsPage()
-            self.sidePage.stack.add_titled(page, "customize", _("Customize"))
+    def btn_widget3switch_click(self, switch, toggled):
+        global widgetend3
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","sync_to_vblank",str(not widgetend3.get_state()).lower()])
 
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-            label = Gtk.Label()
-            label.set_markup("<b>%s</b>" % _("Customize settings"))
-            box.pack_start(label, False, False, 0)
-            self.custom_switch = Gtk.Switch(active = self.is_custom())
-            box.pack_end(self.custom_switch, False, False, 0)
-            self.custom_switch.connect("notify::active", self.update_effects)
-            page.add(box)
+    def btn_widget4switch_click(self, switch, toggled):
+        global widgetend4
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","cycle_preview",str(not widgetend4.get_state()).lower()])
 
-            self.revealer = Gtk.Revealer()
-            self.revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
-            self.revealer.set_transition_duration(150)
-            page.add(self.revealer)
-            settings = SettingsSection(_("Effect"))
-            self.revealer.add(settings)
+    def btn_widget5switch_click(self, switch, toggled):
+        global widgetend5
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","show_popup_shadow",str(not widgetend5.get_state()).lower()])
 
-            self.size_group = Gtk.SizeGroup.new(Gtk.SizeGroupMode.HORIZONTAL)
+    def btn_widget6switch_click(self, switch, toggled):
+        global widgetend6
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","show_dock_shadow",str(not widgetend6.get_state()).lower()])
 
-            effects = ["none", "scale", "fade", "blend", "move", "flyUp", "flyDown", "traditional"]
+    def btn_widget7switch_click(self, switch, toggled):
+        global widgetend7
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","show_frame_shadow",str(not widgetend7.get_state()).lower()])
 
-            # MAPPING WINDOWS
-            widget = self.make_effect_group(_("Mapping windows"), "map", effects)
-            settings.add_row(widget)
+    def btn_widget8switch_click(self, scale, dunno, dunnoeither):
+        global widgetend8
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","frame_opacity",str(int(widgetend8.get_value()))])
 
-            # CLOSING WINDOWS
-            widget = self.make_effect_group(_("Closing windows"), "close", effects)
-            settings.add_row(widget)
+    def btn_widget9switch_click(self, scale, dunno, dunnoeither):
+        global widgetend9
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","inactive_opacity",str(int(widgetend9.get_value()))])
 
-            # MINIMIZING WINDOWS
-            widget = self.make_effect_group(_("Minimizing windows"), "minimize", effects)
-            settings.add_row(widget)
+    def btn_widget10switch_click(self, scale, dunno, dunnoeither):
+        global widgetend10
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","move_opacity",str(int(widgetend10.get_value()))])
 
-            # MAXIMIZING WINDOWS
-            # effects = ["none", _("None")], ["scale", _("Scale")]]
-            widget = self.make_effect_group(_("Maximizing windows"), "maximize")
-            settings.add_row(widget)
+    def btn_widget11switch_click(self, scale, dunno, dunnoeither):
+        global widgetend11
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","resize_opacity",str(int(widgetend11.get_value()))])
 
-            # UNMAXIMIZING WINDOWS
-            widget = self.make_effect_group(_("Unmaximizing windows"), "unmaximize")
-            settings.add_row(widget)
-
-            # TILING WINDOWS
-            widget = self.make_effect_group(_("Tiling and snapping windows"), "tile")
-            settings.add_row(widget)
-
-            self.update_effects(self.custom_switch, None)
+    def btn_widget12switch_click(self, scale, dunno, dunnoeither):
+        global widgetend12
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","popup_opacity",str(int(widgetend12.get_value()))])
 
     def make_effect_group(self, group_label, key, effects=None):
         tmin, tmax, tstep, tdefault = (0, 2000, 50, 200)

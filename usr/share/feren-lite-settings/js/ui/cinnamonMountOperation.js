@@ -29,13 +29,12 @@ function _setLabelText(label, text) {
 function _setButtonsForChoices(dialog, choices) {
     let buttons = [];
 
-    for (let idx = choices.length - 1; idx >= 0; idx--) {
-        buttons.push({
-            label: choices[idx],
-            action: Lang.bind(dialog, () => {
-                dialog.emit('response', idx);
-            })
-        });
+    for (let idx = 0; idx < choices.length; idx++) {
+        let button = idx;
+        buttons.unshift({ label: choices[idx],
+                          action: Lang.bind(dialog, function() {
+                              dialog.emit('response', button);
+                          })});
     }
 
     dialog.setButtons(buttons);

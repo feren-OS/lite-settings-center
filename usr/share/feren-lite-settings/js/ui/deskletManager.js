@@ -77,7 +77,7 @@ function init(){
         global.settings.connect('changed::' + DESKLET_SNAP_INTERVAL_KEY, _onDeskletSnapChanged);
 
         deskletsLoaded = true;
-        updateMouseTracking();
+        enableMouseTracking(true);
         global.log(`DeskletManager started in ${new Date().getTime() - startTime} ms`);
     });
 }
@@ -86,8 +86,7 @@ function getDeskletDefinition(definition) {
     return queryCollection(definitions, definition);
 }
 
-function updateMouseTracking() {
-    let enable = definitions.length > 0;
+function enableMouseTracking(enable) {
     if (enable && !mouseTrackTimoutId) {
         mouseTrackTimoutId = Mainloop.timeout_add(500, checkMouseTracking);
     } else if (!enable && mouseTrackTimoutId) {
@@ -193,19 +192,6 @@ function prepareExtensionUnload(extension, deleteConfig) {
     }
 }
 
-// Callback for extension.js
-function prepareExtensionReload(extension) {
-    for (var i = 0; i < definitions.length; i++) {
-        if (extension.uuid === definitions[i].uuid) {
-            let {desklet, desklet_id} = definitions[i];
-            if (!desklet) continue;
-            global.log(`Reloading desklet: ${extension.uuid}/${desklet_id}`);
-            desklet.on_desklet_reloaded();
-            return;
-        }
-    }
-}
-
 function _onEnabledDeskletsChanged() {
     let oldDefinitions = definitions.slice();
     definitions = getDefinitions();
@@ -253,7 +239,7 @@ function _onEnabledDeskletsChanged() {
 
     // Make sure all desklet extensions are loaded.
     // Once loaded, the desklets will add themselves via finishExtensionLoad
-    initEnabledDesklets().then(updateMouseTracking);
+    initEnabledDesklets();
 }
 
 function _unloadDesklet(deskletDefinition, deleteConfig) {
@@ -407,9 +393,8 @@ function _onDeskletSnapChanged(){
 
         enabledDesklets[i] = elements.join(":");
     }
-    global.settings.disconnect(deskletChangeKey);
+
     global.settings.set_strv(ENABLED_DESKLETS_KEY, enabledDesklets);
-    deskletChangeKey = global.settings.connect('changed::' + ENABLED_DESKLETS_KEY, _onEnabledDeskletsChanged);
     return;
 }
 

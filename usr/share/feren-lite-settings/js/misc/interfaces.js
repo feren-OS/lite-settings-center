@@ -96,10 +96,10 @@ xml['org.cinnamon.SettingsDaemon.Power'] =
             <property name='Icon' type='s' access='read'/> \
             <property name='Tooltip' type='s' access='read'/> \
             <method name='GetPrimaryDevice'> \
-                <arg name='device' type='(sssusduut)' direction='out' /> \
+                <arg name='device' type='(sssusdut)' direction='out' /> \
             </method> \
             <method name='GetDevices'> \
-                <arg name='devices' type='a(sssusduut)' direction='out' /> \
+                <arg name='devices' type='a(sssusdut)' direction='out' /> \
             </method> \
         </interface> \
     </node>",
@@ -147,9 +147,6 @@ xml['org.cinnamon.SettingsDaemon.Power.Keyboard'] =
             <method name='GetPercentage'> \
                 <arg type='u' name='percentage' direction='out'/> \
             </method> \
-            <method name='GetStep'> \
-                <arg type='u' name='step' direction='out'/> \
-            </method> \
             <method name='SetPercentage'> \
                 <arg type='u' name='percentage' direction='in'/> \
                 <arg type='u' name='new_percentage' direction='out'/> \
@@ -192,7 +189,6 @@ xml['org.cinnamon.SettingsDaemon.XRANDR_2'] =
  ****************************************/
 
 const MEDIA_PLAYER_2_PATH = "/org/mpris/MediaPlayer2";
-const ORG_X_STATUS_PATH = "/org/x/StatusIcon";
 
 let xml_with_owner = { };
 
@@ -255,34 +251,6 @@ xml_with_owner['org.mpris.MediaPlayer2.Player'] =
         </interface> \
     </node>",
     MEDIA_PLAYER_2_PATH
-]
-
-xml_with_owner['org.x.StatusIcon'] =
-[
-    "<node> \
-        <interface name='org.x.StatusIcon'> \
-        <method name='ButtonPress'> \
-            <arg name='x' direction='in' type='i'/> \
-            <arg name='y' direction='in' type='i'/> \
-            <arg name='button' direction='in' type='i'/> \
-            <arg name='time' direction='in' type='i'/> \
-            <arg name='panel_position' direction='in' type='i'/> \
-        </method> \
-        <method name='ButtonRelease'> \
-            <arg name='x' direction='in' type='i'/> \
-            <arg name='y' direction='in' type='i'/> \
-            <arg name='button' direction='in' type='i'/> \
-            <arg name='time' direction='in' type='i'/> \
-            <arg name='panel_position' direction='in' type='i'/> \
-        </method> \
-        <property type='s' name='Name' access='read'/> \
-        <property type='s' name='IconName' access='read'/> \
-        <property type='s' name='TooltipText' access='read'/> \
-        <property type='s' name='Label' access='read'/> \
-        <property type='b' name='Visible' access='read'/> \
-        </interface> \
-    </node>",
-    ORG_X_STATUS_PATH
 ]
 
 /*

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gsettings-desktop-schemas">
+  <schema path="/org/feren/lite-settings/background/" id="org.feren.lite-settings.background">
+  </schema>
+  <schema path="/org/feren/lite-settings/background/slideshow/" id="org.feren.lite-settings.background.slideshow">
+    <key type="s" name="image-source">
+      <default>""</default>
+      <summary>Source to use for the background slideshow</summary>
+      <description>
+        This key defines the source for the slideshow to get images from.
+      </description>
+    </key>
+  </schema>
+</schemalist>

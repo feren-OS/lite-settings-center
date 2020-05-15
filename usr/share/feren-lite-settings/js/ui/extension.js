@@ -22,19 +22,6 @@ var State = {
     OUT_OF_DATE: 3
 };
 
-// Xlets using imports.gi.NMClient. This should be removed in Cinnamon 4.2+,
-// after these applets have been updated on Spices.
-var knownCinnamon4Conflicts = [
-    // Applets
-    'turbonote@iksws.com.b',
-    'vnstat@linuxmint.com',
-    'netusagemonitor@pdcurtis',
-    'multicore-sys-monitor@ccadeptic23',
-    // Desklets
-    'netusage@30yavash.com',
-    'simple-system-monitor@ariel'
-];
-
 // macro for creating extension types
 function _createExtensionType(name, folder, manager, overrides){
     let type = {
@@ -46,8 +33,7 @@ function _createExtensionType(name, folder, manager, overrides){
         roles: {},
         callbacks: {
             finishExtensionLoad: manager.finishExtensionLoad,
-            prepareExtensionUnload: manager.prepareExtensionUnload,
-            prepareExtensionReload: manager.prepareExtensionReload
+            prepareExtensionUnload: manager.prepareExtensionUnload
         },
         userDir: GLib.build_filenamev([global.userdatadir, folder]),
         legacyMeta: {}
@@ -100,8 +86,7 @@ var Type = {
         roles: {
             notifications: null,
             windowlist: null,
-            panellauncher: null,
-            tray: null
+            panellauncher: null
         }
     }),
     DESKLET: _createExtensionType("Desklet", "desklets", DeskletManager, {
@@ -199,8 +184,6 @@ Extension.prototype = {
         this.iconDirectory = null;
         this.meta = createMetaDummy(uuid, dir.get_path(), State.INITIALIZING);
 
-        let isPotentialNMClientConflict = knownCinnamon4Conflicts.indexOf(uuid) > -1;
-
         const finishLoad = () => {
             // Many xlets still use appletMeta/deskletMeta to get the path
             type.legacyMeta[uuid] = {path: this.meta.path};
@@ -246,17 +229,8 @@ Extension.prototype = {
                 return findExtensionSubdirectory(this.dir).then((dir) => {
                     this.dir = dir;
                     this.meta.path = this.dir.get_path();
-
-                    // If an xlet has known usage of imports.gi.NMClient, we require them to have a
-                    // 4.0 directory. It is the only way to assume they are patched for Cinnamon 4 from here.
-                    if (isPotentialNMClientConflict && this.meta.path.indexOf(`/4.0`) === -1) {
-                        throw new Error(`Found unpatched usage of imports.gi.NMClient for ${this.lowerType} ${uuid}`);
-                    }
-
                     return finishLoad();
                 });
-            } else if (isPotentialNMClientConflict) {
-                throw new Error(`Found un-versioned ${this.lowerType} ${uuid} with known usage of imports.gi.NMClient`);
             }
             return finishLoad();
         }).then((moduleIndex) => {
@@ -513,7 +487,7 @@ function loadExtension(uuid, type) {
  * @type (Extension.Type): type of xlet
  * @deleteConfig (bool): delete also config files, defaults to true
  */
-function unloadExtension(uuid, type, deleteConfig = true, reload = false) {
+function unloadExtension(uuid, type, deleteConfig = true) {
     let extensionIndex = queryCollection(extensions, {uuid}, true);
     if (extensionIndex > -1) {
         let extension = extensions[extensionIndex];
@@ -523,9 +497,6 @@ function unloadExtension(uuid, type, deleteConfig = true, reload = false) {
         // but it will be removed on next reboot, and hopefully nothing
         // broke too much.
         try {
-            if (reload) {
-                Type[extension.upperType].callbacks.prepareExtensionReload(extension);
-            }
             Type[extension.upperType].callbacks.prepareExtensionUnload(extension, deleteConfig);
         } catch (e) {
             logError(`Error disabling ${extension.lowerType} ${extension.uuid}`, extension.uuid, e);
@@ -562,7 +533,7 @@ function forgetExtension(extensionIndex, uuid, type, forgetMeta) {
  */
 function reloadExtension(uuid, type) {
     if (getExtension(uuid)) {
-        unloadExtension(uuid, type, false, true);
+        unloadExtension(uuid, type, false);
         Main._addXletDirectoriesToSearchPath();
         loadExtension(uuid, type);
         return;
@@ -572,13 +543,10 @@ function reloadExtension(uuid, type) {
 }
 
 function findExtensionDirectory(uuid, userDir, folder) {
-    let dir, dirPath;
-    if (!GLib.getenv('CINNAMON_TROUBLESHOOT')) {
-        dirPath = `${userDir}/${uuid}`;
-        dir = Gio.file_new_for_path(dirPath);
-        if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) === Gio.FileType.DIRECTORY) {
-            return dir;
-        }
+    let dirPath = `${userDir}/${uuid}`;
+    let dir = Gio.file_new_for_path(dirPath);
+    if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) === Gio.FileType.DIRECTORY) {
+        return dir;
     }
 
     let systemDataDirs = GLib.get_system_data_dirs();

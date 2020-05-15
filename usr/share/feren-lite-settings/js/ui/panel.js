@@ -15,13 +15,11 @@ const Meta = imports.gi.Meta;
 const Pango = imports.gi.Pango;
 const Cinnamon = imports.gi.Cinnamon;  // Cinnamon C libraries using GObject Introspection
 const St = imports.gi.St;
-const Gio = imports.gi.Gio;
-const Gtk = imports.gi.Gtk;
-const Signals = imports.signals;
 
 const Applet = imports.ui.applet;
 const AppletManager = imports.ui.appletManager;
 const DND = imports.ui.dnd;
+const Gtk = imports.gi.Gtk;
 const Main = imports.ui.main;
 const ModalDialog = imports.ui.modalDialog;
 const PopupMenu = imports.ui.popupMenu;
@@ -39,41 +37,21 @@ const TIME_DELTA = 1500;
 
 const APPLETS_DROP_ANIMATION_TIME = 0.2;
 
-const PANEL_PEEK_TIME = 1500;
-
 const EDIT_MODE_MIN_BOX_SIZE = 25;
-const VALID_ICON_SIZE_VALUES = [-1, 0, 16, 22, 24, 32, 48];
-
-/*** These are defaults for a new panel added */
-const DEFAULT_PANEL_VALUES = {"panels-autohide": "false",
-                        "panels-show-delay": "0",
-                        "panels-hide-delay": "0",
-                        "panels-height": "40"};
-
-const DEFAULT_FULLCOLOR_ICON_SIZE_VALUES = {"left":   0,
-                                            "center": 0,
-                                            "right":  0};
-
-const DEFAULT_SYMBOLIC_ICON_SIZE_VALUES = {"left":   28,
-                                           "center": 28,
-                                           "right":  28};
-const MIN_SYMBOLIC_SIZE_PX = 10;
-const MAX_SYMBOLIC_SIZE_PX = 50;
-
-const DEFAULT_TEXT_SIZE_VALUES = {"left":   0.0,
-                                  "center": 0.0,
-                                  "right":  0.0};
-const MIN_TEXT_SIZE_PTS = 6.0;
-const MAX_TEXT_SIZE_PTS = 16.0;
-/*** Defaults ***/
 
 const PANEL_AUTOHIDE_KEY = "panels-autohide";
 const PANEL_SHOW_DELAY_KEY = "panels-show-delay";
 const PANEL_HIDE_DELAY_KEY = "panels-hide-delay";
 const PANEL_HEIGHT_KEY = "panels-height";
-const PANEL_ZONE_ICON_SIZES = "panel-zone-icon-sizes";
-const PANEL_ZONE_SYMBOLIC_ICON_SIZES = "panel-zone-symbolic-icon-sizes";
-const PANEL_ZONE_TEXT_SIZES = "panel-zone-text-sizes";
+const PANEL_RESIZABLE_KEY = "panels-resizable";
+const PANEL_SCALE_TEXT_ICONS_KEY = "panels-scale-text-icons";
+
+const DEFAULT_VALUES = {"panels-autohide": "false",
+                        "panels-show-delay": "0",
+                        "panels-hide-delay": "0",
+                        "panels-height": "25",
+                        "panels-resizable": "false",
+                        "panels-scale-text-icons": "true"};
 
 const Direction = {
     LEFT  : 0,
@@ -242,36 +220,6 @@ function getPanelLocFromName (pname) {
 };
 
 /**
- * toStandardIconSize:
- * @maxSize (integer): the maximum size of the icon
- *
- * Calculates the nearest standard icon size up to a maximum.
- *
- * Returns: an integer, the icon size
- */
-function toStandardIconSize(maxSize) {
-    maxSize = Math.floor(maxSize);
-    if (maxSize < 22) return 16;
-    else if (maxSize < 24) return 22;
-    else if (maxSize < 32) return 24;
-    else if (maxSize < 48) return 32;
-    // Panel icons reach 32 at most with the largest panel, also on hidpi
-    return 48;
-}
-
-function setHeightForPanel(panel) {
-    let height;
-
-    // for vertical panels use the width instead of the height
-    if (panel.panelPosition > 1) height = panel.actor.get_width();
-    else height = panel.actor.get_height();
-
-    if (height < 20) height = 40;
-
-    return height;
-}
-
-/**
  * #PanelManager
  *
  * @short_description: Manager of Cinnamon panels
@@ -398,13 +346,13 @@ PanelManager.prototype = {
                     pright = this._loadPanel(stash[j][0], stash[j][1], stash[j][2], [true,true]);
                 }
                 if (stash[j][2] == PanelLoc.bottom && stash[j][1] == i) {
-                    drawcorner[0] = !(panels_used[i][2]);
-                    drawcorner[1] = !(panels_used[i][3]);
+                    drawcorner[0] = (panels_used[i][2])? false : true;
+                    drawcorner[1] = (panels_used[i][3])? false : true;
                     this._loadPanel(stash[j][0], stash[j][1], stash[j][2], drawcorner);
                 }
                 if (stash[j][2] == PanelLoc.top && stash[j][1] == i) {
-                    drawcorner[0] = !(panels_used[i][2]);
-                    drawcorner[1] = !(panels_used[i][3]);
+                    drawcorner[0] = (panels_used[i][2])? false : true;
+                    drawcorner[1] = (panels_used[i][3])? false : true;
                     this._loadPanel(stash[j][0], stash[j][1], stash[j][2], drawcorner);
                 }
             }
@@ -536,14 +484,14 @@ PanelManager.prototype = {
 
         // Add default values
         outerLoop:
-        for (let key in DEFAULT_PANEL_VALUES) {
+        for (let key in DEFAULT_VALUES) {
             let settings = global.settings.get_strv(key);
             for (let j = 0; j < settings.length; j++){
                 if (settings[j].split(":")[0] == i){
                     continue outerLoop;
                 }
             }
-            settings.push(i + ":" + DEFAULT_PANEL_VALUES[key]);
+            settings.push(i + ":" + DEFAULT_VALUES[key]);
             global.settings.set_strv(key, settings);
         }
 
@@ -948,8 +896,8 @@ PanelManager.prototype = {
             for (let j = 0, len = stash.length; j < len; j++) {
                 let drawcorner = [false, false];
                 if (stash[j][2] == PanelLoc.bottom && stash[j][1] == i) {
-                    drawcorner[0] = !(panels_used[i][2]);
-                    drawcorner[1] = !(panels_used[i][3]);
+                    drawcorner[0] = (panels_used[i][2])? false : true;
+                    drawcorner[1] = (panels_used[i][3])? false : true;
                     if (this.panels[stash[j][0]]) {  // panel will not have loaded if previous monitor disconnected etc.
                         this.panels[stash[j][0]].drawcorner = drawcorner;
                         this.panels[stash[j][0]].drawCorners(drawcorner);
@@ -968,8 +916,8 @@ PanelManager.prototype = {
                     }
                 }
                 if (stash[j][2] == PanelLoc.top && stash[j][1] == i) {
-                    drawcorner[0] = !(panels_used[i][2]);
-                    drawcorner[1] = !(panels_used[i][3]);
+                    drawcorner[0] = (panels_used[i][2])? false : true;
+                    drawcorner[1] = (panels_used[i][3])? false : true;
                     if (this.panels[stash[j][0]]) {
                         this.panels[stash[j][0]].drawcorner = drawcorner;
                         this.panels[stash[j][0]].drawCorners(drawcorner);
@@ -1138,7 +1086,7 @@ PanelDummy.prototype = {
         this.panelPosition = panelPosition;
         this.callback = callback;
         this.monitor = global.screen.get_monitor_geometry(monitorIndex);
-        let defaultheight = 40 * global.ui_scale;
+        let defaultheight = 25 * global.ui_scale;
 
         this.actor = new Cinnamon.GenericContainer({style_class: "panel-dummy", reactive: true, track_hover: true, important: true});
 
@@ -1519,7 +1467,6 @@ PanelCorner.prototype = {
         // so the panel can easily check it.
         this.cornerRadius = cornerRadius;
 
-        if (this._box.is_finalized()) return;
         // ugly hack: force the panel to reset its clip region since we just added
         // to the total allocation after it has already clipped to its own
         // allocation
@@ -1547,6 +1494,98 @@ SettingsLauncher.prototype = {
     },
 };
 
+function populateSettingsMenu(menu, panelId) {
+
+    menu.troubleshootItem = new PopupMenu.PopupSubMenuMenuItem(_("Troubleshoot"));
+    menu.troubleshootItem.menu.addAction(_("Restart Cinnamon"), function(event) {
+        global.reexec_self();
+    });
+
+    menu.troubleshootItem.menu.addAction(_("Looking Glass"), function(event) {
+        Main.createLookingGlass().open();
+    });
+
+    menu.troubleshootItem.menu.addAction(_("Restore all settings to default"), function(event) {
+        let confirm = new ModalDialog.ConfirmDialog(_("Are you sure you want to restore all settings to default?\n\n"),
+                function() {
+                    Util.spawnCommandLine("gsettings reset-recursively org.cinnamon");
+                    global.reexec_self();
+                });
+        confirm.open();
+    });
+
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
+
+    menu.addMenuItem(menu.troubleshootItem);
+
+    let panelSettingsSection = new PopupMenu.PopupSubMenuMenuItem(_("Modify panel"));
+
+    let menuItem = new PopupMenu.PopupIconMenuItem(_("Remove panel"), "list-remove", St.IconType.SYMBOLIC);  // submenu item remove panel
+    menuItem.activate = Lang.bind(menu, function() {
+        Main.panelManager.removePanel(panelId);
+    });
+    panelSettingsSection.menu.addMenuItem(menuItem);
+
+    menu.addPanelItem = new PopupMenu.PopupIconMenuItem(_("Add panel"), "list-add", St.IconType.SYMBOLIC); // submenu item add panel
+    menu.addPanelItem.activate = Lang.bind(menu, function() {
+        Main.panelManager.addPanelQuery();
+        this.close();
+    });
+    panelSettingsSection.menu.addMenuItem(menu.addPanelItem);
+
+    menu.movePanelItem = new PopupMenu.PopupIconMenuItem(_("Move panel"), "move", St.IconType.SYMBOLIC); // submenu item move panel
+    menu.movePanelItem.activate = Lang.bind(menu, function() {
+        Main.panelManager.movePanelQuery(this.panelId);
+        this.close();
+    });
+    panelSettingsSection.menu.addMenuItem(menu.movePanelItem);
+
+    menu.copyAppletItem = new PopupMenu.PopupIconMenuItem(_("Copy applet configuration"), "edit-copy", St.IconType.SYMBOLIC);
+    menu.copyAppletItem.activate = Lang.bind(menu, function() {
+        AppletManager.copyAppletConfiguration(this.panelId);
+        this.close();
+    });
+    panelSettingsSection.menu.addMenuItem(menu.copyAppletItem);  // submenu item copy applet config
+
+    menu.pasteAppletItem = new PopupMenu.PopupIconMenuItem(_("Paste applet configuration"), "edit-paste", St.IconType.SYMBOLIC);
+    menu.pasteAppletItem.activate = Lang.bind(menu, function() {
+        let dialog = new ModalDialog.ConfirmDialog(
+                _("Pasting applet configuration will remove all existing applets on this panel. Do you want to continue?") + "\n\n",
+                Lang.bind(this, function() {
+                    AppletManager.pasteAppletConfiguration(this.panelId);
+                }));
+        dialog.open();
+    });
+    panelSettingsSection.menu.addMenuItem(menu.pasteAppletItem); // submenu item paste applet config
+
+    menu.clearAppletItem = new PopupMenu.PopupIconMenuItem(_("Clear all applets"), "edit-clear-all", St.IconType.SYMBOLIC);
+    menu.clearAppletItem.activate = Lang.bind(menu, function() {
+        let dialog = new ModalDialog.ConfirmDialog(
+                _("Are you sure you want to clear all applets on this panel?") + "\n\n",
+                Lang.bind(this, function() {
+                    AppletManager.clearAppletConfiguration(this.panelId);
+                }));
+        dialog.open();
+    });
+
+    panelSettingsSection.menu.addMenuItem(menu.clearAppletItem);  // submenu item clear all applets
+
+    menu.addMenuItem(panelSettingsSection);
+
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+    // Panel Edit mode
+    let editMode = global.settings.get_boolean("panel-edit-mode");
+    let panelEditMode = new PopupMenu.PopupSwitchMenuItem(_("Panel edit mode"), editMode);
+    panelEditMode.connect('toggled', function(item) {
+        global.settings.set_boolean("panel-edit-mode", item.state);
+    });
+    menu.addMenuItem(panelEditMode);        // menu item for panel edit mode
+    global.settings.connect('changed::panel-edit-mode', function() {
+        panelEditMode.setToggleState(global.settings.get_boolean("panel-edit-mode"));
+    });
+}
+
 function PanelContextMenu(launcher, orientation, panelId) {
     this._init(launcher, orientation, panelId);
 }
@@ -1560,107 +1599,19 @@ PanelContextMenu.prototype = {
         this.actor.hide();
         this.panelId = panelId;
 
-        let moreSettingsMenuItem = new SettingsLauncher(_("Panel settings"), "panel " + panelId, "emblem-system");
-        this.addMenuItem(moreSettingsMenuItem);
-
-        let applet_settings_item = new SettingsLauncher(_("Applets"), "applets panel" + panelId, "application-x-addon");
+        let applet_settings_item = new SettingsLauncher(_("Add applets to the panel"), "applets panel" + panelId, "list-add");
         this.addMenuItem(applet_settings_item);
 
-        let menu = this;
+        let menuItem = new SettingsLauncher(_("Panel settings"), "panel " + panelId, "emblem-system");
+        this.addMenuItem(menuItem);
 
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
+        menuItem = new SettingsLauncher(_("Themes"), "themes", "applications-graphics");
+        this.addMenuItem(menuItem);
 
-        // Panel Edit mode
-        let editMode = global.settings.get_boolean("panel-edit-mode");
-        let panelEditMode = new PopupMenu.PopupSwitchMenuItem(_("Panel edit mode"), editMode);
-        panelEditMode.connect('toggled', function(item) {
-            global.settings.set_boolean("panel-edit-mode", item.state);
-        });
-        menu.addMenuItem(panelEditMode);        // menu item for panel edit mode
-        global.settings.connect('changed::panel-edit-mode', function() {
-            panelEditMode.setToggleState(global.settings.get_boolean("panel-edit-mode"));
-        });
+        let menuSetting = new SettingsLauncher(_("System Settings"), "", "preferences-system");
+        this.addMenuItem(menuSetting);
 
-
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
-
-        menu.movePanelItem = new PopupMenu.PopupIconMenuItem(_("Move"), "move", St.IconType.SYMBOLIC); // submenu item move panel
-        menu.movePanelItem.activate = Lang.bind(menu, function() {
-            Main.panelManager.movePanelQuery(this.panelId);
-            this.close(true);
-        });
-        menu.addMenuItem(menu.movePanelItem);
-
-        let menuItem = new PopupMenu.PopupIconMenuItem(_("Remove"), "list-remove", St.IconType.SYMBOLIC);  // submenu item remove panel
-        menuItem.activate = Lang.bind(menu, function() {
-            Main.panelManager.removePanel(panelId);
-        });
-        menu.addMenuItem(menuItem);
-
-        menu.addPanelItem = new PopupMenu.PopupIconMenuItem(_("Add a new panel"), "list-add", St.IconType.SYMBOLIC); // submenu item add panel
-        menu.addPanelItem.activate = Lang.bind(menu, function() {
-            Main.panelManager.addPanelQuery();
-            this.close(true);
-        });
-        menu.addMenuItem(menu.addPanelItem);
-
-        // menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
-
-
-        // menu.copyAppletItem = new PopupMenu.PopupIconMenuItem(_("Copy applets"), "edit-copy", St.IconType.SYMBOLIC);
-        // menu.copyAppletItem.activate = Lang.bind(menu, function() {
-        //     AppletManager.copyAppletConfiguration(this.panelId);
-        //     this.close(true);
-        // });
-        // menu.addMenuItem(menu.copyAppletItem);  // submenu item copy applet config
-
-        // menu.pasteAppletItem = new PopupMenu.PopupIconMenuItem(_("Paste applets"), "edit-paste", St.IconType.SYMBOLIC);
-        // menu.pasteAppletItem.activate = Lang.bind(menu, function() {
-        //     let dialog = new ModalDialog.ConfirmDialog(
-        //             _("Pasting applet configuration will remove all existing applets on this panel. Do you want to continue?") + "\n\n",
-        //             Lang.bind(this, function() {
-        //                 AppletManager.pasteAppletConfiguration(this.panelId);
-        //             }));
-        //     dialog.open();
-        // });
-        // menu.addMenuItem(menu.pasteAppletItem); // submenu item paste applet config
-
-        // menu.clearAppletItem = new PopupMenu.PopupIconMenuItem(_("Clear all applets"), "edit-clear-all", St.IconType.SYMBOLIC);
-        // menu.clearAppletItem.activate = Lang.bind(menu, function() {
-        //     let dialog = new ModalDialog.ConfirmDialog(
-        //             _("Are you sure you want to clear all applets on this panel?") + "\n\n",
-        //             Lang.bind(this, function() {
-        //                 AppletManager.clearAppletConfiguration(this.panelId);
-        //             }));
-        //     dialog.open();
-        // });
-
-        // menu.addMenuItem(menu.clearAppletItem);  // submenu item clear all applets
-
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
-
-        menu.troubleshootItem = new PopupMenu.PopupSubMenuMenuItem(_("Troubleshoot"));
-        menu.troubleshootItem.menu.addAction(_("Restart Cinnamon"), function(event) {
-            global.reexec_self();
-        });
-
-        menu.troubleshootItem.menu.addAction(_("Looking Glass"), function(event) {
-            Main.createLookingGlass().open();
-        });
-
-        menu.troubleshootItem.menu.addAction(_("Restore all settings to default"), function(event) {
-            let confirm = new ModalDialog.ConfirmDialog(_("Are you sure you want to restore all settings to default?\n\n"),
-                    function() {
-                        Util.spawnCommandLine("gsettings reset-recursively org.cinnamon");
-                        global.reexec_self();
-                    });
-            confirm.open();
-        });
-
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem()); // separator line
-        menu.addMenuItem(menu.troubleshootItem);
-
-        this.addMenuItem(new SettingsLauncher(_("System Settings"), "", "preferences-system"));
+        populateSettingsMenu(this, panelId);
     },
 
     open: function(animate) {
@@ -1668,7 +1619,7 @@ PanelContextMenu.prototype = {
 
         this.movePanelItem.setSensitive(Main.panelManager.canAdd);
         this.addPanelItem.setSensitive(Main.panelManager.canAdd);
-        // this.pasteAppletItem.setSensitive(AppletManager.clipboard.length != 0);
+        this.pasteAppletItem.setSensitive(AppletManager.clipboard.length != 0);
 
         let {definitions} = AppletManager;
         let nonEmpty = false;
@@ -1678,8 +1629,8 @@ PanelContextMenu.prototype = {
                 break;
             }
         }
-        //this.copyAppletItem.setSensitive(nonEmpty);
-        //this.clearAppletItem.setSensitive(nonEmpty);
+        this.copyAppletItem.setSensitive(nonEmpty);
+        this.clearAppletItem.setSensitive(nonEmpty);
     }
 }
 
@@ -1899,6 +1850,7 @@ PanelZoneDNDHandler.prototype = {
  * @monitor (Meta.Rectangle): the geometry (bounding box) of the monitor
  * @panelPosition (integer): where the panel is on the screen
  * @actor (Cinnamon.GenericContainer): the actor of the panel
+ * @scaleMode (boolean): whether the applets should scale with the panel
  *
  * @_leftBox (St.BoxLayout): the box containing all the applets in the left region
  * @_centerBox (St.BoxLayout): the box containing all the applets in the center region
@@ -1931,11 +1883,11 @@ Panel.prototype = {
         this._disabled = false;
         this._panelEditMode = false;
         this._autohideSettings = null;
+        this._themeFontSize = null;
         this._destroyed = false;
         this._positionChanged = false;
         this._monitorsChanged = false;
         this._signalManager = new SignalManager.SignalManager(null);
-        this.height = 0;
         this.margin_top = 0;
         this.margin_bottom = 0;
         this.margin_left = 0;
@@ -1945,10 +1897,8 @@ Panel.prototype = {
         this._topPanelBarrier = 0;
         this._bottomPanelBarrier = 0;
         this._shadowBox = null;
-        this._panelZoneSizes = this._createEmptyZoneSizes();
-        this._peeking = false;
 
-        this.themeSettings = new Gio.Settings({ schema_id: 'org.cinnamon.theme' });
+        this.scaleMode = false;
 
         this.actor = new Cinnamon.GenericContainer({ name: 'panel', reactive: true });
         this.addPanelStyleClass(this.panelPosition);
@@ -1991,17 +1941,13 @@ Panel.prototype = {
         this.actor.connect('get-preferred-width', Lang.bind(this, this._getPreferredWidth));
         this.actor.connect('get-preferred-height', Lang.bind(this, this._getPreferredHeight));
         this.actor.connect('allocate', Lang.bind(this, this._allocate));
-        this.actor.connect('queue-relayout', () => this._setPanelHeight());
 
         this._signalManager.connect(global.settings, "changed::" + PANEL_AUTOHIDE_KEY, this._processPanelAutoHide, this);
         this._signalManager.connect(global.settings, "changed::" + PANEL_HEIGHT_KEY, this._moveResizePanel, this);
-        this._signalManager.connect(global.settings, "changed::" + PANEL_ZONE_ICON_SIZES, this._onPanelZoneSizesChanged, this);
-        this._signalManager.connect(global.settings, "changed::" + PANEL_ZONE_SYMBOLIC_ICON_SIZES, this._onPanelZoneSizesChanged, this);
-        this._signalManager.connect(global.settings, "changed::" + PANEL_ZONE_TEXT_SIZES, this._onPanelZoneSizesChanged, this);
+        this._signalManager.connect(global.settings, "changed::" + PANEL_RESIZABLE_KEY, this._moveResizePanel, this);
+        this._signalManager.connect(global.settings, "changed::" + PANEL_SCALE_TEXT_ICONS_KEY, this._onScaleTextIconsChanged, this);
         this._signalManager.connect(global.settings, "changed::panel-edit-mode", this._onPanelEditModeChanged, this);
         this._signalManager.connect(global.settings, "changed::no-adjacent-panel-barriers", this._updatePanelBarriers, this);
-
-        this._onPanelZoneSizesChanged();
     },
 
     drawCorners: function(drawcorner)
@@ -2065,11 +2011,9 @@ Panel.prototype = {
             }
         }
 
-        if (this.actor.is_finalized()) return;
-
-        if (this._leftCorner && !this._leftCorner.actor.is_finalized())
+        if (this._leftCorner)
             this.actor.add_actor(this._leftCorner.actor);
-        if (this._rightCorner && !this._rightCorner.actor.is_finalized())
+        if (this._rightCorner)
             this.actor.add_actor(this._rightCorner.actor);
     },
 
@@ -2186,7 +2130,6 @@ Panel.prototype = {
         this._destroyed = true;    // set this early so that any routines triggered during
                                    // the destroy process can test it
 
-        this._removeZoneIconSizes();
         this._clearPanelBarriers();
         AppletManager.unloadAppletsOnPanel(this.panelId);
         this._context_menu.close();
@@ -2207,26 +2150,6 @@ Panel.prototype = {
         return;
     },
 
-
-    peekPanel: function() {
-        if (!this._hidden || this._peeking)
-            return;
-
-        if (this._showHideTimer > 0) {
-            Mainloop.source_remove(this._showHideTimer);
-            this._showHideTimer = 0;
-        }
-
-        this._peeking = true;
-        this._showPanel();
-
-        Mainloop.timeout_add(PANEL_PEEK_TIME, () => {
-            this._peeking = false;
-            this._updatePanelVisibility();
-            return false;
-        });
-    },
-
     /**
      * highlight:
      * @highlight (boolean): whether to turn on or off
@@ -2234,13 +2157,7 @@ Panel.prototype = {
      * Turns on/off the highlight of the panel
      */
     highlight: function(highlight) {
-        if (highlight == this.actor.has_style_pseudo_class('highlight'))
-            return;
-
         this.actor.change_style_pseudo_class('highlight', highlight);
-
-        if (highlight)
-            this.peekPanel();
     },
 
     /**
@@ -2271,7 +2188,7 @@ Panel.prototype = {
             }
         }
         if (!property) {
-            property = DEFAULT_PANEL_VALUES[key];
+            property = DEFAULT_VALUES[key];
             values.push(this.panelId + ":" + property);
             global.settings.set_strv(key, values);
         }
@@ -2283,28 +2200,6 @@ Panel.prototype = {
         default:
             return property;
         }
-    },
-
-    /**
-     * _getJSONProperty
-     * @key (string): name of gsettings key
-     *
-     * Gets the desired JSON encoded property of the panel from gsettings
-     *
-     * Returns: property required
-     */
-    _getJSONProperty: function(key){
-        let json = global.settings.get_string(key);
-
-        Util.tryFn(function() {
-            json = JSON.parse(json);
-        }, function(err) {
-            err.message = `Failed to parse JSON property: \n${err.message}`;
-            global.logError(err);
-            json = null;
-        });
-
-        return json;
     },
 
     handleDragOver: function(source, actor, x, y, time) {
@@ -2500,6 +2395,8 @@ Panel.prototype = {
         if (event.get_button() == 3) {  // right click
             try {
                 let [x, y] = event.get_coords();
+                let xe = x;
+                let ye = y;
                 let target = global.stage.get_actor_at_pos(Clutter.PickMode.ALL, x, y);
 
                 // NB test on parent fails with centre aligned vertical box, but works for the test against the actor
@@ -2528,7 +2425,7 @@ Panel.prototype = {
     },
 
     _onFocusChanged: function() {
-        if (global.display.focus_window && this._focusWindow !== undefined &&
+        if (global.display.focus_window &&
             this._focusWindow == global.display.focus_window.get_compositor_private())
             return;
 
@@ -2575,8 +2472,25 @@ Panel.prototype = {
      */
     _getScaledPanelHeight: function() {
         let panelHeight = 0;
-        panelHeight = this._getProperty(PANEL_HEIGHT_KEY, "i") * global.ui_scale;
-        return panelHeight < 20 ? 40 : panelHeight;
+        let panelResizable = this._getProperty(PANEL_RESIZABLE_KEY, "b");
+        let isHorizontal = ((this.panelPosition == PanelLoc.top || this.panelPosition == PanelLoc.bottom) ? true : false);
+
+        if (panelResizable) {
+            panelHeight = this._getProperty(PANEL_HEIGHT_KEY, "i") * global.ui_scale;
+        } else {
+            let themeNode = this.actor.get_theme_node();
+
+            if (isHorizontal)
+                panelHeight = themeNode.get_height();
+            else
+                panelHeight = themeNode.get_width();
+
+            if (!panelHeight || panelHeight <= 0) {
+                panelHeight = 25 * global.ui_scale;
+            }
+        }
+
+        return panelHeight;
     },
 
    /**
@@ -2676,7 +2590,7 @@ Panel.prototype = {
         // else full screen windows will then go right to the edge with the panels floating over
         //
         this.monitor = global.screen.get_monitor_geometry(this.monitorIndex);
-        let horizontal_panel = (!!((this.panelPosition == PanelLoc.top || this.panelPosition == PanelLoc.bottom)));
+        let horizontal_panel = ((this.panelPosition == PanelLoc.top || this.panelPosition == PanelLoc.bottom) ? true : false);
 
         // this stands for width on vertical panels, and height on horizontal panels
         let panelHeight = this._getScaledPanelHeight();
@@ -2768,6 +2682,8 @@ Panel.prototype = {
             this.margin_left = newMarginLeft;
             this.margin_right = newMarginRight;
 
+            this._setFont(panelHeight);
+
             // update size and determine position depending on hidden state
             let newX, newY;
             if (horizontal_panel) {
@@ -2812,7 +2728,8 @@ Panel.prototype = {
             }
 
             // AppletManager might not be initialized yet
-            if (AppletManager.appletsLoaded) this._setPanelHeight();
+            if (AppletManager.appletsLoaded)
+                AppletManager.updateAppletPanelHeights();
         }
         return true;
     },
@@ -2868,218 +2785,25 @@ Panel.prototype = {
         this._rightBox.set_y_align(Clutter.ActorAlign.FILL);
     },
 
-    _setPanelHeight: function() {
-        let height = setHeightForPanel(this);
-        if (height === this.height) return;
+    _setFont: function(panelHeight) {
+        this.scaleMode = this._getProperty(PANEL_RESIZABLE_KEY, "b") && this._getProperty(PANEL_SCALE_TEXT_ICONS_KEY, "b");
 
-        this.height = height;
-
-        // In case icon sizes are responding to panel height
-        this._onPanelZoneSizesChanged();
-
-        this.emit('size-changed', height);
-    },
-
-    _createEmptyZoneSizes: function() {
-        let typeStruct = {
-            "left" : 0,
-            "center" : 0,
-            "right" : 0
-        };
-
-        let sizes = {
-            "fullcolor" : typeStruct,
-            "symbolic" : typeStruct,
-            "text" : typeStruct
-        };
-
-        return sizes;
-    },
-
-    _onPanelZoneSizesChanged: function(value, key) {
-        if (this._destroyed) return;
-
-        let changed = false;
-        let oldZoneSizes = this._panelZoneSizes;
-
-        let sizeSets = [
-            ["fullcolor", PANEL_ZONE_ICON_SIZES, (a,b,c,d) => this._clampPanelZoneColorIconSize(a,b,c,d), DEFAULT_FULLCOLOR_ICON_SIZE_VALUES],
-            ["symbolic", PANEL_ZONE_SYMBOLIC_ICON_SIZES, (a,b,c,d) => this._clampPanelZoneSymbolicIconSize(a,b,c,d), DEFAULT_SYMBOLIC_ICON_SIZE_VALUES],
-            ["text", PANEL_ZONE_TEXT_SIZES, (a,b,c,d) => this._clampPanelZoneTextSize(a,b,c,d), DEFAULT_TEXT_SIZE_VALUES]
-        ];
-
-        /* Iterate thru the sizeSets to get our sizes for all 3 types */
-        Util.each(sizeSets, (set, i) => {
-            let [typeString, settingKey, getSizeFunc, defaults] = set;
-
-            let settingsArray = this._getJSONProperty(settingKey);
-
-            /* Temporarily disconnect setting handler, so we don't trigger for our own update */
-            this._signalManager.disconnect("changed::" + settingKey);
-
-            /* If one of the sizing key contains nothing, reset them to default before continuing */
-            if (!settingsArray) {
-                log(`Panel zone size settings invalid, resetting org.cinnamon "${settingKey}"`);
-                global.settings.reset(settingKey);
-                settingsArray = this._getJSONProperty(settingKey);
-            }
-
-            let haveSettings = false;
-
-            /* Now, iterate thru the individual set's values (an individual setting key's array of panel sizes),
-             * then compute their display sizes and stick them in this._panelZoneSizes for the current type. */
-            Util.each(settingsArray, (sizes, i) => {
-                if (sizes.panelId !== this.panelId) return;
-
-                haveSettings = true;
-
-                sizes.left = getSizeFunc(sizes, typeString, "left", defaults);
-                sizes.center = getSizeFunc(sizes, typeString, "center", defaults);
-                sizes.right = getSizeFunc(sizes, typeString, "right", defaults);
-
-                let zoneCache = oldZoneSizes[typeString];
-
-                if (sizes.left !== zoneCache.left ||
-                    sizes.center !== zoneCache.center ||
-                    sizes.right !== zoneCache.right) {
-                    changed = true;
-                }
-
-                this._panelZoneSizes[typeString] = sizes;
-            });
-
-            /* If there are no settings for this panel (it's either new, or the settings key has been reset to defaults),
-             * generate default display values for adding to this._panelZoneSizes, as well as a default item to add to
-             * gsettings. */
-            if (!haveSettings) {
-                let panelHeight = this.height * global.ui_scale;
-
-                let defaultForCache = {
-                    "left": getSizeFunc(defaults, typeString, "left", null),
-                    "center": getSizeFunc(defaults, typeString, "center", null),
-                    "right": getSizeFunc(defaults, typeString, "right", null)
-                };
-
-                this._panelZoneSizes[typeString] = defaultForCache;
-
-                let defaultSet = defaults;
-
-                defaultSet["panelId"] = this.panelId;
-                settingsArray.push(defaultSet);
-                global.settings.set_string(settingKey, JSON.stringify(settingsArray));
-           }
-
-           this._signalManager.connect(global.settings, "changed::" + settingKey, this._onPanelZoneSizesChanged, this);
-        });
-
-        let zones = [
-            [this._leftBox, "left"],
-            [this._centerBox, "center"],
-            [this._rightBox, "right"]
-        ];
-
-        Util.each(zones, (zone, i) => {
-            let [actor, zoneString] = zone;
-
-            let value = this._panelZoneSizes["text"][zoneString];
-
-            if (value > 0.0) {
-                actor.set_style("font-size: %.1fpt;".format(value));
-            } else {
-                actor.set_style(null);
-            }
-        });
-
-        if (changed) this.emit('icon-size-changed');
-    },
-
-    _clampPanelZoneTextSize: function(panelZoneSizeSet, typeString, zoneString, defaults) {
-        let iconSize = panelZoneSizeSet.maybeGet(zoneString);
-
-        if (iconSize == undefined) {
-            iconSize = defaults[zoneString];
+        if (!this._themeFontSize) {
+            let themeNode = this.actor.get_theme_node();
+            this._themeFontSize = themeNode.get_length("font-size");
         }
-
-        if (iconSize !== 0.0) {
-            return iconSize.clamp(MIN_TEXT_SIZE_PTS, MAX_TEXT_SIZE_PTS);
+        if (this.scaleMode) {
+            let textheight = (panelHeight / Applet.DEFAULT_PANEL_HEIGHT) * Applet.PANEL_FONT_DEFAULT_HEIGHT;
+            this.actor.set_style('font-size: ' + textheight / global.ui_scale + 'px;');
+        } else {
+            this.actor.set_style('font-size: ' + this._themeFontSize ? this._themeFontSize + 'px;' : '8.5pt;');
         }
-
-        return iconSize;
     },
 
-    _clampPanelZoneColorIconSize: function(panelZoneSizeSet, typeString, zoneString, defaults) {
-        let iconSize = panelZoneSizeSet.maybeGet(zoneString);
-
-        if (iconSize == undefined) {
-            iconSize = defaults[zoneString];
-        }
-
-        let height = this.height / global.ui_scale;
-
-        if (iconSize === -1) { // Legacy: Scale to panel size
-            iconSize = height;
-        } else if (iconSize === 0 || iconSize > height) { // To best fit within the panel size
-            iconSize = toStandardIconSize(height);
-        }
-
-        return iconSize; // Always return a value above 0 or St will spam the log.
-    },
-
-    _clampPanelZoneSymbolicIconSize: function(panelZoneSizeSet, typeString, zoneString, defaults) {
-        let iconSize = panelZoneSizeSet.maybeGet(zoneString);
-
-        if (iconSize == undefined) {
-            iconSize = defaults[zoneString];
-        }
-
-        let panelHeight = this.height / global.ui_scale;
-
-        let new_size = iconSize.clamp(MIN_SYMBOLIC_SIZE_PX, Math.min(MAX_SYMBOLIC_SIZE_PX, panelHeight));
-        return new_size;
-    },
-
-    getPanelZoneIconSize: function(locationLabel, iconType) {
-        let zoneConfig = this._panelZoneSizes;
-        let typeString = "fullcolor";
-
-        if (iconType == St.IconType.SYMBOLIC) {
-            typeString = "symbolic";
-        }
-
-        return this._panelZoneSizes[typeString][locationLabel];
-    },
-
-    _removeZoneIconSizes: function() {
-        let sizeSets = [
-            ["fullcolor", PANEL_ZONE_ICON_SIZES],
-            ["symbolic", PANEL_ZONE_SYMBOLIC_ICON_SIZES],
-            ["text", PANEL_ZONE_TEXT_SIZES]
-        ];
-
-        Util.each(sizeSets, (set, i) => {
-            let [typeString, settingKey] = set;
-
-            let settingsArray = this._getJSONProperty(settingKey);
-
-            /* Temporarily disconnect setting handler, so we don't trigger for our own update */
-            this._signalManager.disconnect("changed::" + settingKey);
-
-            let zoneIndex = Util.findIndex(settingsArray, (obj) => {
-                return obj.panelId === this.panelId;
-            });
-
-            if (zoneIndex >= 0) {
-                settingsArray.splice(zoneIndex, 1);
-
-                this._panelZoneSizes = null;
-
-                global.settings.set_string(settingKey, JSON.stringify(settingsArray));
-
-                this._signalManager.connect(global.settings, "changed::" + settingKey, this._onPanelZoneSizesChanged, this);
-            }
-        });
-
-        global.log(`[Panel ${this.panelId}] Removing zone configuration`);
+    _onScaleTextIconsChanged: function() {
+        let panelHeight = this._getScaledPanelHeight();
+        this._setFont(panelHeight);
+        AppletManager.updateAppletPanelHeights(true);
     },
 
     _getPreferredWidth: function(actor, forHeight, alloc) {
@@ -3428,66 +3152,65 @@ Panel.prototype = {
      * position of mouse/active window. It then calls the _queueShowHidePanel
      * function to show or hide the panel as necessary.
      *
-     * true = autohide, false = always show, intel = Intelligent
+     * false = autohide, true = always show, intel = Intelligent
      */
     _updatePanelVisibility: function() {
-        if (this._panelEditMode || this._peeking)
-            this._shouldShow = true;
-        else {
-            switch (this._autohideSettings) {
-                case "false":
+
+        switch (this._autohideSettings) {
+            case "false":
+                this._shouldShow = true;
+                break;
+            case "true":
+                this._shouldShow = this._mouseEntered;
+                break;
+            default:
+                if (this._mouseEntered || !global.display.focus_window ||
+                    global.display.focus_window.get_window_type() == Meta.WindowType.DESKTOP) {
                     this._shouldShow = true;
                     break;
-                case "true":
-                    this._shouldShow = this._mouseEntered;
+                }
+
+                if (global.display.focus_window.get_monitor() != this.monitorIndex) {
+                    this._shouldShow = false;
                     break;
-                default:
-                    if (this._mouseEntered || !global.display.focus_window ||
-                        global.display.focus_window.get_window_type() == Meta.WindowType.DESKTOP) {
-                        this._shouldShow = true;
+                }
+                let x, y;
+
+                /* Calculate the x or y instead of getting it from the actor since the
+                 * actor might be hidden*/
+                switch (this.panelPosition) {
+                    case PanelLoc.top:
+                        y = this.monitor.y;
                         break;
-                    }
-
-                    if (global.display.focus_window.get_monitor() != this.monitorIndex) {
-                        this._shouldShow = false;
+                    case PanelLoc.bottom:
+                        y = this.monitor.y + this.monitor.height - this.actor.height;
                         break;
-                    }
-                    let x, y;
+                    case PanelLoc.left:
+                        x = this.monitor.x;
+                        break;
+                    case PanelLoc.right:
+                        x = this.monitor.x + this.monitor.width - this.actor.width;
+                        break;
+                    default:
+                        global.log("updatePanelVisibility - unrecognised panel position "+this.panelPosition);
+                }
 
-                    /* Calculate the x or y instead of getting it from the actor since the
-                    * actor might be hidden*/
-                    switch (this.panelPosition) {
-                        case PanelLoc.top:
-                            y = this.monitor.y;
-                            break;
-                        case PanelLoc.bottom:
-                            y = this.monitor.y + this.monitor.height - this.actor.height;
-                            break;
-                        case PanelLoc.left:
-                            x = this.monitor.x;
-                            break;
-                        case PanelLoc.right:
-                            x = this.monitor.x + this.monitor.width - this.actor.width;
-                            break;
-                        default:
-                            global.log("updatePanelVisibility - unrecognised panel position "+this.panelPosition);
-                    }
+                let a = this.actor;
+                let b = global.display.focus_window.get_compositor_private();
+                /* Magic to check whether the panel position overlaps with the
+                 * current focused window */
+                if (this.panelPosition == PanelLoc.top || this.panelPosition == PanelLoc.bottom) {
+                    this._shouldShow = !(Math.max(a.x, b.x) < Math.min(a.x + a.width, b.x + b.width) &&
+                                         Math.max(y, b.y) < Math.min(y + a.height, b.y + b.height));
+                } else {
+                    this._shouldShow = !(Math.max(x, b.x) < Math.min(x + a.width, b.x + b.width) &&
+                                         Math.max(a.y, b.y) < Math.min(a.y + a.height, b.y + b.height));
+                }
 
-                    let a = this.actor;
-                    let b = global.display.focus_window.get_compositor_private();
-                    /* Magic to check whether the panel position overlaps with the
-                    * current focused window */
-                    if (this.panelPosition == PanelLoc.top || this.panelPosition == PanelLoc.bottom) {
-                        this._shouldShow = !(Math.max(a.x, b.x) < Math.min(a.x + a.width, b.x + b.width) &&
-                                            Math.max(y, b.y) < Math.min(y + a.height, b.y + b.height));
-                    } else {
-                        this._shouldShow = !(Math.max(x, b.x) < Math.min(x + a.width, b.x + b.width) &&
-                                            Math.max(a.y, b.y) < Math.min(a.y + a.height, b.y + b.height));
-                    }
+        } // end of switch on autohidesettings
 
-            } // end of switch on autohidesettings
-        }
-
+        if (this._panelEditMode)
+            this._shouldShow = true;
         this._queueShowHidePanel();
     },
 
@@ -3709,5 +3432,3 @@ Panel.prototype = {
         this._rightBoxDNDHandler.reset();
     }
 };
-
-Signals.addSignalMethods(Panel.prototype);

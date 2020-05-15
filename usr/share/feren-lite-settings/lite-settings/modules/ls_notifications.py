@@ -4,8 +4,7 @@ import gi
 gi.require_version('Notify', '0.7')
 from gi.repository import GObject, Notify
 
-from SettingsWidgets import SidePage
-from xapp.GSettingsWidgets import *
+from GSettingsWidgets import *
 
 content = """
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. \
@@ -63,7 +62,7 @@ class Module:
         settings.add_reveal_row(switch, "org.cinnamon.desktop.notifications", "display-notifications")
 
         button = Button(_("Display a test notification"), self.send_test)
-        settings.add_reveal_row(button, "org.cinnamon.desktop.notifications", "display-notifications")
+        settings.add_row(button)
 
         settings = page.add_section(_("Media keys OSD"))
 

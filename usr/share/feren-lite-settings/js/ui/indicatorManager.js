@@ -478,8 +478,8 @@ AppIndicator.prototype = {
         }
     },
 
-    getActor: function(size, orientation) {
-        return new IndicatorActor(this, size, orientation);
+    getActor: function(size) {
+        return new IndicatorActor(this, size);
     },
 
     //async because we may need to check the presence of a menubar object as well as the creation is async.
@@ -951,9 +951,9 @@ function IndicatorActor() {
 
 IndicatorActor.prototype = {
 
-    _init: function(indicator, size, orientation) {
+    _init: function(indicator, size) {
         this.actor = new St.BoxLayout({
-            style_class: 'applet-icon',
+            style_class: 'applet-box', //FIXME: Use instead the status actor style class.
             reactive: true,
             track_hover: true,
             // The systray use a layout manager, we need to fill the space of the actor
@@ -963,12 +963,6 @@ IndicatorActor.prototype = {
         });
 
         this.actor._delegate = this;
-
-        if (orientation == St.Side.LEFT || orientation == St.Side.RIGHT) {
-            this.actor.set_x_align(Clutter.ActorAlign.FILL);
-            this.actor.set_y_align(Clutter.ActorAlign.END);
-            this.actor.set_vertical(true);
-        }
 
         this.menu = null;
         this._menuSignal = 0;
@@ -1064,11 +1058,9 @@ IndicatorActor.prototype = {
     _updatedLabel: function() {
         if (this._indicator.label != undefined) {
             this._label.set_text(this._indicator.label);
-            this._label.show();
         } else {
             this._label.set_text("");
-            this._label.hide(); // blanking out a label is not enough, its presence may trigger
-                                // unwanted 'spacing' CSS.
+            this.actor.remove_style_class_name('applet-box');
         }
     },
 
@@ -1250,49 +1242,46 @@ IndicatorActor.prototype = {
         // we use the one that is smaller or equal the iconSize
 
         // maybe it's empty? that's bad.
-        if (!iconPixmapArray || iconPixmapArray.length < 1) return null;
+        if (iconPixmapArray && iconPixmapArray.length > 0) {
+            let sortedIconPixmapArray = iconPixmapArray.sort(function(pixmapA, pixmapB) {
+                // we sort biggest to smallest
+                let areaA = pixmapA[0] * pixmapA[1];
+                let areaB = pixmapB[0] * pixmapB[1];
 
-        let sortedIconPixmapArray = iconPixmapArray.sort(function(pixmapA, pixmapB) {
-            // we sort biggest to smallest
-            let areaA = pixmapA[0] * pixmapA[1];
-            let areaB = pixmapB[0] * pixmapB[1];
-
-            return areaB - areaA;
-        });
-
-        let qualifiedIconPixmapArray = sortedIconPixmapArray.filter(function(pixmap) {
-            // we disqualify any pixmap that is bigger than our requested size
-            return pixmap[0] <= iconSize && pixmap[1] <= iconSize;
-        });
-
-        // if no one got qualified, we use the smallest one available
-        let iconPixmap = qualifiedIconPixmapArray.length > 0 ? qualifiedIconPixmapArray[0] : sortedIconPixmapArray.pop();
-
-        let [ width, height, bytes ] = iconPixmap;
-        let rowstride = width * 4;
-
-        try {
-            let image = new Clutter.Image();
-            image.set_bytes(
-                bytes,
-                Cogl.PixelFormat.ARGB_8888,
-                width,
-                height,
-                rowstride
-            );
-
-            return new Clutter.Actor({
-                width: Math.min(width, iconSize),
-                height: Math.min(height, iconSize),
-                content: image,
-                scale_x: global.ui_scale,
-                scale_y: global.ui_scale,
-                pivot_point: new Clutter.Point({ x: .5, y: .5 })
+                return areaB - areaA;
             });
-        } catch (e) {
-            global.logWarning(`[IndicatorManager] Failed to create indicator icon\n${e.message}`);
-            return null;
+            let iconPixmap = sortedIconPixmapArray.pop();
+            if (iconSize) {
+                let qualifiedIconPixmapArray = sortedIconPixmapArray.filter(function(pixmap) {
+                    // we disqualify any pixmap that is bigger than our requested size
+                    return pixmap[0] <= iconSize && pixmap[1] <= iconSize;
+                });
+
+                // if no one got qualified, we use the smallest one available
+                if (qualifiedIconPixmapArray.length > 0)
+                    iconPixmap = qualifiedIconPixmapArray[0];
+            }
+            let [ width, height, bytes ] = iconPixmap;
+            try {
+                let stream = Gio.MemoryInputStream.new_from_bytes(bytes);
+                let pixbuf = GdkPixbuf.Pixbuf.new_from_stream(stream, null);
+
+                let icon = new St.Icon({
+                    style_class: 'applet-icon',//FIXME: Use instead the status icon style class.
+                    gicon: pixbuf,
+                });
+                if (iconSize)
+                    icon.set_icon_size(iconSize);
+                //Connect this always, because the user can enable/disable the panel scale mode
+                //when he want, otherwise we need to control the scale mode internally.
+                icon.connect('notify::mapped', Lang.bind(this, this._onIconMapped));
+                return icon;
+            } catch (e) {
+                // the image data was probably bogus. We don't really know why, but it _does_ happen.
+                // we could log it here, but that doesn't really help in tracking it down.
+            }
         }
+        return null;
     },
 
     _onIconMapped: function(actor, event) {

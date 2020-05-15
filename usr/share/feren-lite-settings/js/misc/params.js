@@ -15,10 +15,10 @@
 // Return value: a new object, containing the merged parameters from
 // @params and @defaults
 function parse(params, defaults, allowExtras) {
-    let ret = {};
+    let ret = {}, prop;
 
     if (!params)
-        return Object.assign({}, defaults);
+        params = {};
 
     for (let prop in params) {
         if (!(prop in defaults) && !allowExtras)

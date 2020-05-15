@@ -20,7 +20,8 @@ const EdgeFlip = imports.ui.edgeFlip;
 const HotCorner = imports.ui.hotCorner;
 const DeskletManager = imports.ui.deskletManager;
 const Panel = imports.ui.panel;
-const StartupAnimation = imports.ui.startupAnimation;
+
+const STARTUP_ANIMATION_TIME = 0.5;
 
 function isPopupMetaWindow(actor) {
     switch(actor.meta_window.get_window_type()) {
@@ -139,8 +140,22 @@ LayoutManager.prototype = {
         for (let i = 0; i < nMonitors; i++)
             this.monitors.push(new Monitor(i, screen.get_monitor_geometry(i)));
 
-        this.primaryIndex = screen.get_primary_monitor();
+        if (nMonitors == 1) {
+            this.primaryIndex = this.bottomIndex = 0;
+        } else {
+            // If there are monitors below the primary, then we need
+            // to split primary from bottom.
+            this.primaryIndex = this.bottomIndex = screen.get_primary_monitor();
+            for (let i = 0; i < this.monitors.length; i++) {
+                let monitor = this.monitors[i];
+                if (this._isAboveOrBelowPrimary(monitor)) {
+                    if (monitor.y > this.monitors[this.bottomIndex].y)
+                        this.bottomIndex = i;
+                }
+            }
+        }
         this.primaryMonitor = this.monitors[this.primaryIndex];
+        this.bottomMonitor = this.monitors[this.bottomIndex];
     },
 
     _updateBoxes: function() {
@@ -153,6 +168,20 @@ LayoutManager.prototype = {
         this._updateMonitors();
         this._updateBoxes();
         this.emit('monitors-changed');
+    },
+
+    _isAboveOrBelowPrimary: function(monitor) {
+        let primary = this.monitors[this.primaryIndex];
+        let monitorLeft = monitor.x, monitorRight = monitor.x + monitor.width;
+        let primaryLeft = primary.x, primaryRight = primary.x + primary.width;
+
+        if ((monitorLeft >= primaryLeft && monitorLeft < primaryRight) ||
+            (monitorRight > primaryLeft && monitorRight <= primaryRight) ||
+            (primaryLeft >= monitorLeft && primaryLeft < monitorRight) ||
+            (primaryRight > monitorLeft && primaryRight <= monitorRight))
+            return true;
+
+        return false;
     },
 
     get focusIndex() {
@@ -188,24 +217,37 @@ LayoutManager.prototype = {
 
         this.keyboardBox.hide();
 
-        global.stage.hide_cursor();
-        global.background_actor.show();
+        let monitor = this.primaryMonitor;
+        let x = monitor.x + monitor.width / 2.0;
+        let y = monitor.y + monitor.height / 2.0;
 
-        this.startupAnimation = new StartupAnimation.Animation(this.primaryMonitor,
-                                                               ()=>this._startupAnimationComplete());
-        this._chrome.updateRegions();
+        Main.uiGroup.set_pivot_point(x / global.screen_width,
+                                     y / global.screen_height);
+        Main.uiGroup.scale_x = Main.uiGroup.scale_y = 0.75;
+        Main.uiGroup.opacity = 0;
+        global.background_actor.show();
+        global.window_group.set_clip(monitor.x, monitor.y, monitor.width, monitor.height);
     },
 
-    _doStartupAnimation: function() {
+    _startupAnimation: function() {
         // Don't animate the strut
         this._chrome.freezeUpdateRegions();
-        this.startupAnimation.run();
+        Tweener.addTween(Main.uiGroup,
+                         { scale_x: 1,
+                           scale_y: 1,
+                           opacity: 255,
+                           time: STARTUP_ANIMATION_TIME,
+                           transition: 'easeOutQuad',
+                           onComplete: this._startupAnimationComplete,
+                           onCompleteScope: this });
     },
 
     _startupAnimationComplete: function() {
-        global.stage.show_cursor();
+        global.stage.no_clear_hint = true;
         this._coverPane.destroy();
         this._coverPane = null;
+
+        global.window_group.remove_clip();
         this._chrome.thawUpdateRegions();
 
         Main.setRunState(Main.RunState.RUNNING);
@@ -680,14 +722,7 @@ Chrome.prototype = {
     },
 
     _windowsRestacked: function() {
-        // Figure out where the pointer is in case we lost track of
-        // it during a grab.
-        global.sync_pointer();
-
-        let isPopupWindowVisible = global.top_window_group.get_children().some(isPopupMetaWindow);
-        let popupVisibilityChanged = this._isPopupWindowVisible !== isPopupWindowVisible;
-        this._isPopupWindowVisible = isPopupWindowVisible;
-        if (popupVisibilityChanged)
+        if (this._isPopupWindowVisible != global.top_window_group.get_children().some(isPopupMetaWindow))
             this._updateVisibility();
         else
             this._queueUpdateRegions();
@@ -701,7 +736,8 @@ Chrome.prototype = {
             this._updateRegionIdle = 0;
         }
 
-        let wantsInputRegion = !this._isPopupWindowVisible;
+        let isPopupMenuVisible = global.top_window_group.get_children().some(isPopupMetaWindow);
+        let wantsInputRegion = !isPopupMenuVisible;
 
         for (let i = 0; i < this._trackedActors.length; i++) {
             let actorData = this._trackedActors[i];
@@ -795,6 +831,7 @@ Chrome.prototype = {
         }
 
         global.set_stage_input_region(rects);
+        this._isPopupWindowVisible = isPopupMenuVisible;
 
         let screen = global.screen;
         for (let w = 0; w < screen.n_workspaces; w++) {

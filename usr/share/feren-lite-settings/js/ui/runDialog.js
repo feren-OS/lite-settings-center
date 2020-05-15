@@ -35,13 +35,6 @@ const ALIASES_KEY = 'run-dialog-aliases';
 const DIALOG_GROW_TIME = 0.1;
 const MAX_COMPLETIONS = 40;
 
-const NAVIGATE_TYPE_NONE = 0;
-const NAVIGATE_TYPE_TAB = 1;
-const NAVIGATE_TYPE_ARROW = 2;
-
-const UP = 1;
-const DOWN = 2;
-
 const DEVEL_COMMANDS = { 'lg': x => Main.createLookingGlass().open(),
                          'r': x => global.reexec_self(),
                          'restart': x => global.reexec_self(),
@@ -157,8 +150,6 @@ __proto__: ModalDialog.ModalDialog.prototype,
         }));
         this._enableInternalCommands = global.settings.get_boolean('development-tools');
 
-        global.display.connect('restart', () => this.close());
-
         let label = new St.Label({ style_class: 'run-dialog-label',
                                    text: _("Please enter a command:") });
 
@@ -197,11 +188,10 @@ __proto__: ModalDialog.ModalDialog.prototype,
 
         this._errorBox.hide();
 
-        this._entryText.connect('key-press-event', Lang.bind(this, this._onKeyPress));
-
         this._history = new History.HistoryManager({ gsettingsKey: HISTORY_KEY,
                                                      entry: this._entryText,
                                                      deduplicate: true });
+        this._entryText.connect('key-press-event', Lang.bind(this, this._onKeyPress));
 
         this._updateCompletionTimer = 0;
      },
@@ -209,23 +199,6 @@ __proto__: ModalDialog.ModalDialog.prototype,
     _onKeyPress: function (o, e) {
         let symbol = e.get_key_symbol();
         if (symbol == Clutter.Return || symbol == Clutter.KP_Enter) {
-            if (o.get_text().trim() == "") {
-                return false;
-            }
-
-            /* When enter is hit with completions open, if the current selection
-             * is a folder, open that folder immediately.  Otherwise, just close
-             * the completion box - the user can add an argument to the command
-             * they selected (there's already a space provided) */
-            if (this._completionBox.visible && !o.get_text().endsWith("/")) {
-                this._completionSelected = 0;
-                this._completionBox.hide();
-                this._entryText.set_selection_bound(-1);
-                this._entryText.set_cursor_position(-1);
-                this._oldText = "";
-                return true;
-            }
-
             this.popModal();
             if (Cinnamon.get_event_state(e) & Clutter.ModifierType.CONTROL_MASK)
                 this._run(o.get_text(), true);
@@ -239,25 +212,14 @@ __proto__: ModalDialog.ModalDialog.prototype,
             }
             return true;
         }
-        if (symbol == Clutter.Escape || symbol == Clutter.Super_L || symbol == Clutter.Super_R) {
+        if (symbol == Clutter.Escape) {
             this.close();
             return true;
         }
         if (symbol == Clutter.Tab) {
-            this._updateCompletions(NAVIGATE_TYPE_TAB);
+            this._updateCompletions(true);
             return true;
         }
-
-        if (this._completionBox.visible) {
-            if (symbol == Clutter.KEY_Up) {
-                this._updateCompletions(NAVIGATE_TYPE_ARROW, UP);
-                return true;
-            } else if (symbol == Clutter.KEY_Down) {
-                this._updateCompletions(NAVIGATE_TYPE_ARROW, DOWN);
-                return true;
-            }
-        }
-
         if (symbol == Clutter.BackSpace) {
             this._completionSelected = 0;
             this._completionBox.hide();
@@ -278,10 +240,10 @@ __proto__: ModalDialog.ModalDialog.prototype,
 
     // There is different behaviour depending on whether this is called due to
     // pressing tab or other keys.
-    _updateCompletions: function(nav_type=NAVIGATE_TYPE_NONE, direction=DOWN) {
+    _updateCompletions: function(tab) {
         this._updateCompletionTimer = 0;
 
-        let text = this._expandHome(this._entryText.get_text());
+        let text = this._entryText.get_text();
 
         /* If update is caused by user pressing key, and the user just finished
          * a directory path, don't provide new predictions. For example, the
@@ -292,7 +254,7 @@ __proto__: ModalDialog.ModalDialog.prototype,
          * not perform completions, since completions will list all files in
          * /home/user/, which is unexpected.
          */
-        if (!nav_type && text.charAt(text.length - 1) == "/") {
+        if (!tab && text.charAt(text.length - 1) == "/") {
             this._completionBox.hide();
             this._oldText = "";
             return;
@@ -304,22 +266,12 @@ __proto__: ModalDialog.ModalDialog.prototype,
         /* If update is caused by user typing "tab" and no text has changed
          * since then, cycle through available completions.
          */
-        if (this._oldText == text && nav_type && this._completionBox.visible) {
-            if ((nav_type == NAVIGATE_TYPE_ARROW && direction == DOWN) || nav_type == NAVIGATE_TYPE_TAB) {
-                this._completionSelected ++;
-                this._completionSelected %= this._completions.length;
-                this._showCompletions(text);
-                return;
-            } else { // nav_type was > 0 and not tab, and not down, so navigate UP.
-                if (this._completionSelected > 0) {
-                    this._completionSelected --;
-                }
-
-                this._showCompletions(text);
-                return;
-            }
+        if (this._oldText == text && tab && this._completionBox.visible) {
+            this._completionSelected ++;
+            this._completionSelected %= this._completions.length;
+            this._showCompletions(text);
+            return;
         }
-
         this._oldText = text;
 
         let [postfix, completions] = completeCommand(text);
@@ -332,7 +284,7 @@ __proto__: ModalDialog.ModalDialog.prototype,
          * possible completions. If there is no possible completion, then hide
          * completion box.
          */
-        if (postfix.length > 0 && nav_type == NAVIGATE_TYPE_TAB) {
+        if (postfix.length > 0 && tab) {
             this._entryText.set_text(text + postfix);
         } else if (completions.length > 0 &&
                 global.settings.get_boolean(SHOW_COMPLETIONS_KEY)) {
@@ -343,15 +295,6 @@ __proto__: ModalDialog.ModalDialog.prototype,
             this._completionBox.hide();
             this._oldText = "";
         }
-    },
-
-    _expandHome: function(text) {
-        if (text.charAt(0) == '~') {
-            text = text.slice(1);
-            return GLib.build_filenamev([GLib.get_home_dir(), text]);
-        }
-
-        return text;
     },
 
     _showCompletions: function(orig) {
@@ -397,15 +340,12 @@ __proto__: ModalDialog.ModalDialog.prototype,
     },
 
     _run : function(input, inTerminal) {
-        input = input.trim();
         this._history.addItem(input);
         this._commandError = false;
-        if (this._enableInternalCommands && input in DEVEL_COMMANDS) {
-            DEVEL_COMMANDS[input]();
+        if (this._enableInternalCommands && input.trim() in DEVEL_COMMANDS) {
+            DEVEL_COMMANDS[input.trim()]();
             return;
         }
-
-        input = this._expandHome(input);
 
         // Aliases is a list of strings of the form a:b, where an instance of
         // "a" is to be replaced with "b". Replacement is only performed on the
@@ -426,18 +366,20 @@ __proto__: ModalDialog.ModalDialog.prototype,
                 let exec_arg = this._terminalSettings.get_string(EXEC_ARG_KEY);
                 command = exec + ' ' + exec_arg + ' ' + input;
             }
-            Util.spawnCommandLineAsync(command, null, null);
+            Util.trySpawnCommandLine(command);
         } catch (e) {
             // Mmmh, that failed - see if @input matches an existing file
             let path = null;
-
+            input = input.trim();
             if (input.charAt(0) == '/') {
                 path = input;
             } else {
+                if (input.charAt(0) == '~')
+                    input = input.slice(1);
                 path = GLib.build_filenamev([GLib.get_home_dir(), input]);
             }
 
-            if (path && GLib.file_test(path, GLib.FileTest.EXISTS)) {
+            if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
                 let file = Gio.file_new_for_path(path);
                 try {
                     Gio.app_info_launch_default_for_uri(file.get_uri(),
@@ -459,7 +401,7 @@ __proto__: ModalDialog.ModalDialog.prototype,
     _showError : function(message) {
         this._commandError = true;
 
-        this._errorMessage.set_text(message.trim());
+        this._errorMessage.set_text(message);
 
         if (!this._errorBox.visible) {
             let [errorBoxMinHeight, errorBoxNaturalHeight] = this._errorBox.get_preferred_height(-1);

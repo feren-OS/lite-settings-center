@@ -1,49 +1,21 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
 
-const {BrightnessContrastEffect, DesaturateEffect} = imports.gi.Clutter;
+const Clutter = imports.gi.Clutter;
 const Lang = imports.lang;
-const {
-    GrabOp,
-    Rectangle,
-    MotionDirection,
-    WindowType,
-    keybindings_set_custom_handler,
-    prefs_get_attach_modal_dialogs
-} = imports.gi.Meta;
-const {
-    Bin,
-    Label,
-    ThemeContext
-} = imports.gi.St;
-const {Settings} = imports.gi.Gio;
-const {getWindowsForBinding} = imports.ui.appSwitcher.appSwitcher;
-const {CoverflowSwitcher} = imports.ui.appSwitcher.coverflowSwitcher;
-const {TimelineSwitcher} = imports.ui.appSwitcher.timelineSwitcher;
-const {ClassicSwitcher} = imports.ui.appSwitcher.classicSwitcher;
-const {
-    Map,
-    Close,
-    Minimize,
-    Unminimize,
-    Tile,
-    Maximize,
-    Unmaximize
-} = imports.ui.windowEffects;
-const {each, filter, tryFn} = imports.misc.util;
+const Meta = imports.gi.Meta;
+const St = imports.gi.St;
+const Cinnamon = imports.gi.Cinnamon;
+const Mainloop = imports.mainloop;
+const Gio = imports.gi.Gio;
+const AppSwitcher = imports.ui.appSwitcher.appSwitcher;
+const CoverflowSwitcher = imports.ui.appSwitcher.coverflowSwitcher;
+const TimelineSwitcher = imports.ui.appSwitcher.timelineSwitcher;
+const ClassicSwitcher = imports.ui.appSwitcher.classicSwitcher;
+const WindowEffects = imports.ui.windowEffects;
+
 const Main = imports.ui.main;
-const {
-    expo,
-    getWorkspaceName,
-    layoutManager,
-    overview,
-    panelManager,
-    soundManager,
-} = Main;
-const {InfoOSD} = imports.ui.modalDialog;
-const {
-    addTween,
-    removeTweens
-} = imports.ui.tweener;
+const ModalDialog = imports.ui.modalDialog;
+const Tweener = imports.ui.tweener;
 
 const WINDOW_ANIMATION_TIME = 0.25;
 const TILE_HUD_ANIMATION_TIME = 0.15;
@@ -80,32 +52,41 @@ const ZONE_TR = 5;
 const ZONE_BR = 6;
 const ZONE_BL = 7;
 
-const SETTINGS_EFFECTS_TYPES = [['effect', 'get_string'], ['time', 'get_int'], ['transition', 'get_string']];
+function getTopInvisibleBorder(metaWindow) {
+    let outerRect = metaWindow.get_outer_rect();
+    let inputRect = metaWindow.get_input_rect();
+    return outerRect.y - inputRect.y;
+}
 
-class WindowDimmer {
-    constructor(actor) {
-        this._desaturateEffect = new DesaturateEffect();
-        this._brightnessEffect = new BrightnessContrastEffect();
+function WindowDimmer(actor) {
+    this._init(actor);
+}
+
+WindowDimmer.prototype = {
+    _init: function(actor) {
+
+        this._desaturateEffect = new Clutter.DesaturateEffect();
+        this._brightnessEffect = new Clutter.BrightnessContrastEffect();
         actor.add_effect(this._desaturateEffect);
         actor.add_effect(this._brightnessEffect);
 
         this.actor = actor;
         this._dimFactor = 0.0;
-    }
+    },
 
-    setEnabled(enabled) {
+    setEnabled: function(enabled) {
         this._desaturateEffect.enabled = enabled;
         this._brightnessEffect.enabled = enabled;
-    }
+    },
 
     set dimFactor(factor) {
         this._dimFactor = factor;
         this._desaturateEffect.set_factor(factor * DIM_DESATURATION);
         this._brightnessEffect.set_brightness(factor * DIM_BRIGHTNESS);
-    }
+    },
 
     get dimFactor() {
-        return this._dimFactor;
+       return this._dimFactor;
     }
 };
 
@@ -116,17 +97,21 @@ function getWindowDimmer(actor) {
     return actor._windowDimmer;
 }
 
-class TilePreview {
-    constructor() {
-        this.actor = new Bin({ style_class: 'tile-preview', important: true });
+function TilePreview() {
+    this._init();
+}
+
+TilePreview.prototype = {
+    _init: function() {
+        this.actor = new St.Bin({ style_class: 'tile-preview', important: true });
         global.window_group.add_actor(this.actor);
 
         this._snapQueued = 0;
         this._reset();
         this._showing = false;
-    }
+    },
 
-    show(window, tileRect, monitorIndex, snapQueued, effectsEnabled) {
+    show: function(window, tileRect, monitorIndex, snapQueued) {
         let windowActor = window.get_compositor_private();
         if (!windowActor)
             return;
@@ -139,16 +124,15 @@ class TilePreview {
         if (this._rect && this._rect.equal(tileRect))
             return;
 
-        let changeMonitor = (this._monitorIndex === -1 ||
+        let changeMonitor = (this._monitorIndex == -1 ||
                              this._monitorIndex != monitorIndex);
 
         this._monitorIndex = monitorIndex;
         this._rect = tileRect;
-        let monitor = layoutManager.monitors[monitorIndex];
-        let {x, y, width, height} = tileRect;
+        let monitor = Main.layoutManager.monitors[monitorIndex];
 
         if (!this._showing || changeMonitor) {
-            let monitorRect = new Rectangle({ x: monitor.x,
+            let monitorRect = new Meta.Rectangle({ x: monitor.x,
                                                    y: monitor.y,
                                                    width: monitor.width,
                                                    height: monitor.height });
@@ -160,81 +144,68 @@ class TilePreview {
 
         this._showing = true;
         this.actor.show();
-        windowActor.get_parent().set_child_above_sibling(windowActor, null);
+        windowActor.raise_top();
 
-        let props = {
-            x,
-            y,
-            width,
-            height,
-            opacity: 255,
-        };
+        Tweener.addTween(this.actor,
+                         { x: tileRect.x,
+                           y: tileRect.y,
+                           width: tileRect.width,
+                           height: tileRect.height,
+                           opacity: 255,
+                           time: WINDOW_ANIMATION_TIME,
+                           transition: 'easeOutQuad' });
+    },
 
-        if (effectsEnabled) {
-            Object.assign(props, {
-                time: WINDOW_ANIMATION_TIME,
-                transition: 'easeOutQuad'
-            });
-            addTween(this.actor, props);
-            return;
-        }
-
-        Object.assign(this.actor, props);
-    }
-
-    hide(effectsEnabled) {
+    hide: function() {
         if (!this._showing)
             return;
 
         this._showing = false;
+        Tweener.addTween(this.actor,
+                         { opacity: 0,
+                           time: WINDOW_ANIMATION_TIME,
+                           transition: 'easeOutQuad',
+                           onComplete: Lang.bind(this, this._reset) });
+    },
 
-        if (effectsEnabled) {
-            addTween(this.actor, {
-                opacity: 0,
-                time: WINDOW_ANIMATION_TIME,
-                transition: 'easeOutQuad',
-                onComplete: () => this._reset()
-            });
-            return;
-        }
-        this.actor.opacity = 0;
-
-    }
-
-    _reset() {
+    _reset: function() {
         this.actor.hide();
         this._rect = null;
         this._monitorIndex = -1;
-    }
+    },
 
-    _updateStyle() {
+    _updateStyle: function() {
         if (this.actor.has_style_class_name('snap'))
             this.actor.remove_style_class_name('snap');
         else
             this.actor.add_style_class_name('snap');
-    }
+    },
 
-    destroy() {
+    destroy: function() {
         this.actor.destroy();
     }
 };
 
-class HudPreview {
-    constructor() {
-        this.actor = new Bin({ style_class: 'tile-hud', important: true });
+function HudPreview() {
+    this._init();
+}
+
+HudPreview.prototype = {
+    _init: function() {
+        this.actor = new St.Bin({ style_class: 'tile-hud', important: true });
         global.window_group.add_actor(this.actor);
 
-        this._tileHudSettings = new Settings({ schema_id: "org.cinnamon.muffin" });
-        this._tileHudSettings.connect("changed::tile-hud-threshold", () => this._onTileHudSettingsChanged());
+        this._tileHudSettings = new Gio.Settings({ schema_id: "org.cinnamon.muffin" });
+        this._tileHudSettings.connect("changed::tile-hud-threshold", Lang.bind(this, this._onTileHudSettingsChanged));
 
         this._onTileHudSettingsChanged();
         this._snapQueued = 0;
 
         this._reset();
         this._showing = false;
-    }
+    },
 
-    show(currentProximityZone, workArea, snapQueued, effectsEnabled) {
+    show: function(currentProximityZone, workArea, snapQueued) {
         let changeZone = (this._zone != currentProximityZone);
 
         if (this._snapQueued != snapQueued) {
@@ -364,89 +335,75 @@ class HudPreview {
 
             this._showing = true;
             this.actor.show();
-            this.actor.get_parent().set_child_above_sibling(this.actor, null);
+            this.actor.raise_top();
             this.actor.opacity = 0;
 
-            let props = {
-                x: this._animatedX,
-                y: this._animatedY,
-                width: this._animatedW,
-                height: this._animatedH,
-                opacity: 255,
-            };
-
-            if (effectsEnabled) {
-                Object.assign(props, {
-                    time: TILE_HUD_ANIMATION_TIME,
-                    transition: 'easeOutQuad'
-                })
-                addTween(this.actor, props);
-                return;
-            }
-
-            Object.assign(this.actor, props);
+            Tweener.addTween(this.actor,
+                         { x: this._animatedX,
+                           y: this._animatedY,
+                           width: this._animatedW,
+                           height: this._animatedH,
+                           opacity: 255,
+                           time: TILE_HUD_ANIMATION_TIME,
+                           transition: 'easeOutQuad' });
         }
-    }
+    },
 
-    hide(effectsEnabled) {
+    hide: function() {
         if (!this._showing)
             return;
         this._showing = false;
-        let props = {
-            x: this._x,
-            y: this._y,
-            width: this._w,
-            height: this._h,
-            opacity: 0,
-        };
+        Tweener.addTween(this.actor,
+                         { x: this._x,
+                           y: this._y,
+                           width: this._w,
+                           height: this._h,
+                           opacity: 0,
+                           time: TILE_HUD_ANIMATION_TIME,
+                           transition: 'easeOutQuad',
+                           onComplete: Lang.bind(this, this._reset) });
+    },
 
-        if (effectsEnabled) {
-            Object.assign(props, {
-                time: TILE_HUD_ANIMATION_TIME,
-                transition: 'easeOutQuad',
-                onComplete: () => this._reset()
-            });
-            addTween(this.actor, props);
-            return;
-        }
-
-        Object.assign(this.actor, props);
-    }
-
-    _reset() {
+    _reset: function () {
         this.actor.hide();
         this._zone = -1;
-    }
+    },
 
-    _onTileHudSettingsChanged() {
-        let scaleFactor = global.ui_scale;
+    _onTileHudSettingsChanged: function() {
+        let scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         this._hudSize = this._tileHudSettings.get_int("tile-hud-threshold") * scaleFactor;
 
-    }
+    },
 
-    _updateStyle(pseudoClass) {
+    _updateStyle: function(pseudoClass) {
         let currentStyle = this.actor.get_style_pseudo_class();
         if (currentStyle)
             this.actor.remove_style_pseudo_class(currentStyle);
         if (pseudoClass) {
             this.actor.set_style_pseudo_class(pseudoClass);
         }
-    }
+    },
 
-    _updateSnapStyle() {
+    _updateSnapStyle: function() {
         if (this.actor.has_style_class_name('snap'))
             this.actor.remove_style_class_name('snap');
         else
             this.actor.add_style_class_name('snap');
-    }
+    },
 
-    destroy() {
+    destroy: function() {
         this.actor.destroy();
     }
 }
 
-var WindowManager = class WindowManager {
-    constructor() {
+function WindowManager() {
+    this._init();
+}
+
+WindowManager.prototype = {
+    _init : function() {
+        this._cinnamonwm =  global.window_manager;
+
         this._minimizing = [];
         this._maximizing = [];
         this._unmaximizing = [];
@@ -454,41 +411,15 @@ var WindowManager = class WindowManager {
         this._mapping = [];
         this._destroying = [];
 
-        const _endWindowEffect = (c, n, a) => this._endWindowEffect(c, n, a);
-
         this.effects = {
-            map: new Map(_endWindowEffect),
-            close: new Close(_endWindowEffect),
-            minimize: new Minimize(_endWindowEffect),
-            unminimize: new Unminimize(_endWindowEffect),
-            tile: new Tile(_endWindowEffect),
-            maximize: new Maximize(_endWindowEffect),
-            unmaximize: new Unmaximize(_endWindowEffect)
+            map: new WindowEffects.Map(this),
+            close: new WindowEffects.Close(this),
+            minimize: new WindowEffects.Minimize(this),
+            unminimize: new WindowEffects.Unminimize(this),
+            tile: new WindowEffects.Tile(this),
+            maximize: new WindowEffects.Maximize(this),
+            unmaximize: new WindowEffects.Unmaximize(this)
         };
-
-        this.settings = new Settings({schema_id: 'org.cinnamon.muffin'});
-
-        const settingsState = {
-            'desktop-effects-on-dialogs': global.settings.get_boolean('desktop-effects-on-dialogs'),
-            'desktop-effects-on-menus': global.settings.get_boolean('desktop-effects-on-menus'),
-            'desktop-effects': this.settings.get_boolean('desktop-effects'),
-        };
-
-        global.settings.connect('changed::desktop-effects-on-dialogs', (s, k) => this.onSettingsChanged(s, k, 'get_boolean'));
-        global.settings.connect('changed::desktop-effects-on-menus', (s, k) => this.onSettingsChanged(s, k, 'get_boolean'));
-        this.settings.connect('changed::desktop-effects', (s, k) => this.onSettingsChanged(s, k, 'get_boolean'));
-
-        each(this.effects, (value, key) => {
-            if (key === 'unmaximize' || key === 'unminimize') return;
-            each(SETTINGS_EFFECTS_TYPES, (item) => {
-                let [name, type] = item;
-                let property = `desktop-effects-${key}-${name}`;
-                settingsState[property] = global.settings[type](property);
-                global.settings.connect(`changed::${property}`, (s, k) => this.onSettingsChanged(s, k, type));
-            });
-        });
-
-        this.settingsState = settingsState;
 
         this._snapOsd = null;
         this._workspace_osd_array = [];
@@ -501,111 +432,105 @@ var WindowManager = class WindowManager {
         this._animationBlockCount = 0;
 
         this._switchData = null;
-        global.window_manager.connect('kill-window-effects', (c, a) => this._killWindowEffects(c, a));
-        global.window_manager.connect('switch-workspace', (c, f, t, d) => this._switchWorkspace(c, f, t, d));
-        global.window_manager.connect('minimize', (c, a) => this._minimizeWindow(c, a));
-        global.window_manager.connect('maximize', (c, a, x, y, w, h) => this._maximizeWindow(c, a, x, y, w, h));
-        global.window_manager.connect('unmaximize', (c, a, x, y, w, h) => this._unmaximizeWindow(c, a, x, y, w, h));
-        global.window_manager.connect('tile', (c, a, x, y, w, h) => this._tileWindow(c, a, x, y, w, h));
-        global.window_manager.connect('show-tile-preview', (c, w, t, m, s) => this._showTilePreview(c, w, t, m, s));
-        global.window_manager.connect('hide-tile-preview', (c) => this._hideTilePreview(c));
-        global.window_manager.connect('show-hud-preview', (c, p, w, s) => this._showHudPreview(c, p, w, s));
-        global.window_manager.connect('hide-hud-preview', (c) => this._hideHudPreview(c));
-        global.window_manager.connect('map', (c, a) => this._mapWindow(c, a));
-        global.window_manager.connect('destroy', (c, a) => this._destroyWindow(c, a));
+        this._cinnamonwm.connect('kill-window-effects', Lang.bind(this, this._killWindowEffects));
+        this._cinnamonwm.connect('switch-workspace', Lang.bind(this, this._switchWorkspace));
+        this._cinnamonwm.connect('minimize', Lang.bind(this, this._minimizeWindow));
+        this._cinnamonwm.connect('maximize', Lang.bind(this, this._maximizeWindow));
+        this._cinnamonwm.connect('unmaximize', Lang.bind(this, this._unmaximizeWindow));
+        this._cinnamonwm.connect('tile', Lang.bind(this, this._tileWindow));
+        this._cinnamonwm.connect('show-tile-preview', Lang.bind(this, this._showTilePreview));
+        this._cinnamonwm.connect('hide-tile-preview', Lang.bind(this, this._hideTilePreview));
+        this._cinnamonwm.connect('show-hud-preview', Lang.bind(this, this._showHudPreview));
+        this._cinnamonwm.connect('hide-hud-preview', Lang.bind(this, this._hideHudPreview));
+        this._cinnamonwm.connect('map', Lang.bind(this, this._mapWindow));
+        this._cinnamonwm.connect('destroy', Lang.bind(this, this._destroyWindow));
 
-        keybindings_set_custom_handler('move-to-workspace-left', (d, s, w, b) => this._moveWindowToWorkspaceLeft(d, s, w, b));
-        keybindings_set_custom_handler('move-to-workspace-right', (d, s, w, b) => this._moveWindowToWorkspaceRight(d, s, w, b));
+        Meta.keybindings_set_custom_handler('move-to-workspace-left',
+                                            Lang.bind(this, this._moveWindowToWorkspaceLeft));
+        Meta.keybindings_set_custom_handler('move-to-workspace-right',
+                                            Lang.bind(this, this._moveWindowToWorkspaceRight));
 
-        keybindings_set_custom_handler('switch-to-workspace-left', (d, s, w, b) => this._showWorkspaceSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-to-workspace-right', (d, s, w, b) => this._showWorkspaceSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-to-workspace-up', (d, s, w, b) => this._showWorkspaceSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-to-workspace-down', (d, s, w, b) => this._showWorkspaceSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-windows', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-group', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-windows-backward', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-group-backward', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-panels', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
-        keybindings_set_custom_handler('switch-panels-backward', (d, s, w, b) => this._startAppSwitcher(d, s, w, b));
+        Meta.keybindings_set_custom_handler('switch-to-workspace-left',
+                                            Lang.bind(this, this._showWorkspaceSwitcher));
+        Meta.keybindings_set_custom_handler('switch-to-workspace-right',
+                                            Lang.bind(this, this._showWorkspaceSwitcher));
+        Meta.keybindings_set_custom_handler('switch-to-workspace-up',
+                                            Lang.bind(this, this._showWorkspaceSwitcher));
+        Meta.keybindings_set_custom_handler('switch-to-workspace-down',
+                                            Lang.bind(this, this._showWorkspaceSwitcher));
+        Meta.keybindings_set_custom_handler('switch-windows',
+                                            Lang.bind(this, this._startAppSwitcher));
+        Meta.keybindings_set_custom_handler('switch-group',
+                                            Lang.bind(this, this._startAppSwitcher));
+        Meta.keybindings_set_custom_handler('switch-windows-backward',
+                                            Lang.bind(this, this._startAppSwitcher));
+        Meta.keybindings_set_custom_handler('switch-group-backward',
+                                            Lang.bind(this, this._startAppSwitcher));
+        Meta.keybindings_set_custom_handler('switch-panels',
+                                            Lang.bind(this, this._startAppSwitcher));
+        Meta.keybindings_set_custom_handler('switch-panels-backward',
+                                            Lang.bind(this, this._startAppSwitcher));
 
-        overview.connect('showing', () => {
-            let {_dimmedWindows} = this;
-            for (let i = 0, len = _dimmedWindows.length; i < len; i++) {
-                this._undimWindow(_dimmedWindows[i], true);
-            }
-        });
-        overview.connect('hiding', () => {
-            let {_dimmedWindows} = this;
-            for (let i = 0, len = _dimmedWindows.length; i < len; i++) {
-                this._dimWindow(_dimmedWindows[i], true);
-            }
-        });
+        Main.overview.connect('showing', Lang.bind(this, function() {
+            for (let i = 0; i < this._dimmedWindows.length; i++)
+                this._undimWindow(this._dimmedWindows[i], true);
+        }));
+        Main.overview.connect('hiding', Lang.bind(this, function() {
+            for (let i = 0; i < this._dimmedWindows.length; i++)
+                this._dimWindow(this._dimmedWindows[i], true);
+        }));
 
-        global.screen.connect ('show-snap-osd', (m, i) => this._showSnapOSD(m, i));
-        global.screen.connect ('hide-snap-osd', () => this._hideSnapOSD());
-        global.screen.connect ('show-workspace-osd', () => this.showWorkspaceOSD());
-    }
+        global.screen.connect ("show-snap-osd", Lang.bind (this, this._showSnapOSD));
+        global.screen.connect ("hide-snap-osd", Lang.bind (this, this._hideSnapOSD));
+        global.screen.connect ("show-workspace-osd", Lang.bind (this, this.showWorkspaceOSD));
 
-    onSettingsChanged(settings, key, type) {
-        switch (settings.schema) {
-            case 'org.cinnamon':
-                this.settingsState[key] = global.settings[type](key);
-                break;
-            case 'org.cinnamon.muffin':
-                this.settingsState[key] = this.settings[type](key);
-                break;
-        }
-    }
+        this.settings = new Gio.Settings({schema_id: "org.cinnamon.muffin"});
+    },
 
-    blockAnimations() {
+    blockAnimations: function() {
         this._animationBlockCount++;
-    }
+    },
 
-    unblockAnimations() {
+    unblockAnimations: function() {
         this._animationBlockCount = Math.max(0, this._animationBlockCount - 1);
-    }
+    },
 
-    _shouldAnimate(actor) {
-        // Check if system is in modal state or in software rendering
-        if (Main.modalCount || Main.software_rendering) {
+    _shouldAnimate : function(actor) {
+        if (Main.modalCount) {
+            // system is in modal state
             return false;
         }
-
-        switch (actor.meta_window.window_type) {
-            case WindowType.NORMAL:
-                return true;
-            case WindowType.DIALOG:
-            case WindowType.MODAL_DIALOG:
-                return this.settingsState['desktop-effects-on-dialogs'];
-            case WindowType.MENU:
-            case WindowType.DROPDOWN_MENU:
-            case WindowType.POPUP_MENU:
-                return this.settingsState['desktop-effects-on-menus'];
-            default:
-                return false;
+        if (Main.software_rendering)
+            return false;
+        if (!actor)
+            return global.settings.get_boolean("desktop-effects");
+        let type = actor.meta_window.get_window_type();
+        if (type == Meta.WindowType.NORMAL) {
+            return global.settings.get_boolean("desktop-effects");
         }
-    }
+        if (type == Meta.WindowType.DIALOG || type == Meta.WindowType.MODAL_DIALOG) {
+            return global.settings.get_boolean("desktop-effects") && global.settings.get_boolean("desktop-effects-on-dialogs");
+        }
+        if (type == Meta.WindowType.MENU ||
+            type == Meta.WindowType.DROPDOWN_MENU ||
+            type == Meta.WindowType.POPUP_MENU) {
+            return global.settings.get_boolean("desktop-effects") && global.settings.get_boolean("desktop-effects-on-menus");
+        }
+        return false;
+    },
 
-    _startWindowEffect(cinnamonwm, name, actor, args, overwriteKey) {
+    _startWindowEffect: function(cinnamonwm, name, actor, args, overwriteKey){
         let effect = this.effects[name];
-        if (!this.settingsState['desktop-effects'] || !this._shouldAnimate(actor)) {
+        if(!this._shouldAnimate(actor)){
             cinnamonwm[effect.wmCompleteName](actor);
             return;
         }
 
         let key = "desktop-effects-" + (overwriteKey || effect.name);
-        let time = this.settingsState[`${key}-time`];
+        let type = global.settings.get_string(key + "-effect");
 
-        // Transition time is 0ms, bail
-        if (!time) {
-            cinnamonwm[effect.wmCompleteName](actor);
-            return;
-        }
-
-        let type = this.settingsState[`${key}-effect`];
-
-        // make sure to end a running effect
-        if (actor.current_effect_name) {
+        //make sure to end a running effect
+        if(actor.current_effect_name){
             this._endWindowEffect(cinnamonwm, actor.current_effect_name, actor);
         }
         this[effect.arrayName].push(actor);
@@ -613,102 +538,102 @@ var WindowManager = class WindowManager {
         actor.orig_opacity = actor.opacity;
         actor.show();
 
-        if (effect[type]) {
-            time = time / 1000;
-            let transition = this.settingsState[`${key}-transition`];
+        if(effect[type]){
+            let time = global.settings.get_int(key + "-time") / 1000;
+            let transition = global.settings.get_string(key + "-transition");
 
             effect[type](cinnamonwm, actor, time, transition, args);
-        } else if (!overwriteKey) // when not unminimizing, but the effect was not found, end it
+        } else if(!overwriteKey) //when not unminimizing, but the effect was not found, end it
             this._endWindowEffect(cinnamonwm, name, actor);
-    }
+    },
 
-    _endWindowEffect(cinnamonwm, name, actor) {
+    _endWindowEffect: function(cinnamonwm, name, actor){
         let effect = this.effects[name];
-        // effect will be an instance of Effect
+        //effect will be an instance of WindowEffects.Effect
         let idx = this[effect.arrayName].indexOf(actor);
-        if (idx !== -1) {
+        if(idx !== -1){
             this[effect.arrayName].splice(idx, 1);
-            removeTweens(actor);
+            Tweener.removeTweens(actor);
             delete actor.current_effect_name;
             effect._end(actor);
             cinnamonwm[effect.wmCompleteName](actor);
-            panelManager.updatePanelsVisibility();
+            Main.panelManager.updatePanelsVisibility();
         }
-    }
+    },
 
-    _killWindowEffects(cinnamonwm, actor) {
-        for (let i in this.effects) {
+    _killWindowEffects: function (cinnamonwm, actor) {
+        for(let i in this.effects){
             this._endWindowEffect(cinnamonwm, i, actor);
         }
-    }
+    },
 
-    _minimizeWindow(cinnamonwm, actor) {
-        soundManager.play('minimize');
+    _minimizeWindow : function(cinnamonwm, actor) {
+        Main.soundManager.play('minimize');
 
         // reset all cached values in case "traditional" is no longer in effect
-        actor.meta_window._cinnamonwm_has_origin = false;
+        actor.get_meta_window()._cinnamonwm_has_origin = false;
         this._startWindowEffect(cinnamonwm, "minimize", actor);
-    }
+    },
 
-    _tileWindow(cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
-        soundManager.play('tile');
+    _tileWindow : function (cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
+        Main.soundManager.play('tile');
 
         this._startWindowEffect(cinnamonwm, "tile", actor, [targetX, targetY, targetWidth, targetHeight]);
-    }
+    },
 
-    _maximizeWindow(cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
-        soundManager.play('maximize');
+    _maximizeWindow : function(cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
+        Main.soundManager.play('maximize');
 
         this._startWindowEffect(cinnamonwm, "maximize", actor, [targetX, targetY, targetWidth, targetHeight]);
-    }
+    },
 
-    _unmaximizeWindow(cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
-        soundManager.play('unmaximize');
+    _unmaximizeWindow : function(cinnamonwm, actor, targetX, targetY, targetWidth, targetHeight) {
+        Main.soundManager.play('unmaximize');
 
         this._startWindowEffect(cinnamonwm, "unmaximize", actor, [targetX, targetY, targetWidth, targetHeight]);
-    }
+    },
 
-    _hasAttachedDialogs(window, ignoreWindow) {
-        let count = 0;
+    _hasAttachedDialogs: function(window, ignoreWindow) {
+        var count = 0;
         window.foreach_transient(function(win) {
             if (win != ignoreWindow && win.is_attached_dialog())
                 count++;
             return false;
         });
         return count != 0;
-    }
+    },
 
-    _checkDimming(window, ignoreWindow) {
+    _checkDimming: function(window, ignoreWindow) {
         let shouldDim = this._hasAttachedDialogs(window, ignoreWindow);
 
         if (shouldDim && !window._dimmed) {
             window._dimmed = true;
             this._dimmedWindows.push(window);
-            if (!overview.visible)
+            if (!Main.overview.visible)
                 this._dimWindow(window, true);
         } else if (!shouldDim && window._dimmed) {
             window._dimmed = false;
-            this._dimmedWindows = filter(this._dimmedWindows, function(win) {
-                return win !== window;
-            });
-            if (!overview.visible)
+            this._dimmedWindows = this._dimmedWindows.filter(function(win) {
+                                                                 return win != window;
+                                                             });
+            if (!Main.overview.visible)
                 this._undimWindow(window, true);
         }
-    }
+    },
 
-    _dimWindow(window, animate) {
+    _dimWindow: function(window, animate) {
         let actor = window.get_compositor_private();
         if (!actor)
             return;
 
         let dimmer = getWindowDimmer(actor);
-        let enabled = prefs_get_attach_modal_dialogs();
+        let enabled = Meta.prefs_get_attach_modal_dialogs();
         dimmer.setEnabled(enabled);
         if (!enabled)
             return;
 
         if (animate) {
-            addTween(dimmer,
+            Tweener.addTween(dimmer,
                              { dimFactor: 1.0,
                                time: DIM_TIME,
                                transition: 'linear'
@@ -716,21 +641,21 @@ var WindowManager = class WindowManager {
         } else {
             getWindowDimmer(actor).dimFactor = 1.0;
         }
-    }
+    },
 
-    _undimWindow(window, animate) {
+    _undimWindow: function(window, animate) {
         let actor = window.get_compositor_private();
         if (!actor)
             return;
 
         let dimmer = getWindowDimmer(actor);
-        let enabled = prefs_get_attach_modal_dialogs();
+        let enabled = Meta.prefs_get_attach_modal_dialogs();
         dimmer.setEnabled(enabled);
         if (!enabled)
             return;
 
         if (animate) {
-            addTween(dimmer,
+            Tweener.addTween(dimmer,
                              { dimFactor: 0.0,
                                time: UNDIM_TIME,
                                transition: 'linear'
@@ -738,65 +663,74 @@ var WindowManager = class WindowManager {
         } else {
             getWindowDimmer(actor).dimFactor = 0.0;
         }
-    }
+    },
 
-    _mapWindow(cinnamonwm, actor) {
-        let {meta_window} = actor;
-        if (meta_window.is_attached_dialog()) {
-            this._checkDimming(meta_window.get_transient_for());
+    _mapWindow : function(cinnamonwm, actor) {
+        actor._windowType = actor.meta_window.get_window_type();
+        actor._notifyWindowTypeSignalId = actor.meta_window.connect('notify::window-type', Lang.bind(this, function () {
+            let type = actor.meta_window.get_window_type();
+            actor._windowType = type;
+        }));
+
+        if (actor.meta_window.is_attached_dialog()) {
+            this._checkDimming(actor.get_meta_window().get_transient_for());
         }
 
-        if (meta_window._cinnamonwm_has_origin && meta_window._cinnamonwm_has_origin === true) {
-            soundManager.play('minimize');
-            this._startWindowEffect(cinnamonwm, 'unminimize', actor, null, 'minimize');
-            return;
-        } else if (meta_window.window_type === WindowType.NORMAL) {
-            soundManager.play('map');
+        if (actor.get_meta_window()._cinnamonwm_has_origin && actor.get_meta_window()._cinnamonwm_has_origin === true) {
+            Main.soundManager.play('minimize');
+            try {
+                this._startWindowEffect(cinnamonwm, "unminimize", actor, null, "minimize")
+                return;
+            } catch(e) {
+                //catch "no origin found"
+            }
+        } else if (actor.meta_window.get_window_type() == Meta.WindowType.NORMAL) {
+            Main.soundManager.play('map');
         }
         this._startWindowEffect(cinnamonwm, "map", actor);
-    }
+    },
 
-    _destroyWindow(cinnamonwm, actor) {
-        let {meta_window} = actor;
+    _destroyWindow : function(cinnamonwm, actor) {
 
-        if (actor.meta_window.window_type === WindowType.NORMAL) {
-            soundManager.play('close');
+        if (actor.meta_window.get_window_type() == Meta.WindowType.NORMAL) {
+            Main.soundManager.play('close');
         }
 
         actor.orig_opacity = actor.opacity;
-        actor.orig_opacity = actor.opacity;
 
-        if (meta_window.is_attached_dialog()) {
-            let parent = meta_window.get_transient_for();
-            this._checkDimming(parent, meta_window);
+        let window = actor.meta_window;
+
+        if (window.is_attached_dialog()) {
+            let parent = window.get_transient_for();
+            this._checkDimming(parent, window);
         }
 
         if (actor._notifyWindowTypeSignalId) {
-            meta_window.disconnect(actor._notifyWindowTypeSignalId);
+            window.disconnect(actor._notifyWindowTypeSignalId);
             actor._notifyWindowTypeSignalId = 0;
         }
-        if (meta_window._dimmed) {
-            this._dimmedWindows = filter(this._dimmedWindows, function(win) {
-                return win !== meta_window;
-            });
+        if (window._dimmed) {
+            this._dimmedWindows = this._dimmedWindows.filter(function(win) {
+                                                                 return win != window;
+                                                             });
         }
 
-        if (meta_window.minimized) {
+        if (window.minimized) {
             cinnamonwm.completed_destroy(actor);
             return;
         }
 
         this._startWindowEffect(cinnamonwm, "close", actor);
-    }
+    },
 
-    _switchWorkspace(cinnamonwm, from, to, direction) {
-        if (!this.settingsState['desktop-effects'] || Main.modalCount || Main.software_rendering) {
+    _switchWorkspace : function(cinnamonwm, from, to, direction) {
+        if (!this._shouldAnimate()) {
             this.showWorkspaceOSD();
             cinnamonwm.completed_switch_workspace();
             return;
         }
 
-        soundManager.play('switch');
+        Main.soundManager.play('switch');
         this.showWorkspaceOSD();
 
         let windows = global.get_window_actors();
@@ -806,52 +740,47 @@ var WindowManager = class WindowManager {
          * opposite direction.
          */
         let xDest = 0, yDest = 0;
-        let {display, screen_width, screen_height} = global;
-        let {focus_window} = display;
-        let grabOp = display.get_grab_op();
 
+        if (direction == Meta.MotionDirection.UP ||
+            direction == Meta.MotionDirection.UP_LEFT ||
+            direction == Meta.MotionDirection.UP_RIGHT)
+                yDest = global.screen_height;
+        else if (direction == Meta.MotionDirection.DOWN ||
+            direction == Meta.MotionDirection.DOWN_LEFT ||
+            direction == Meta.MotionDirection.DOWN_RIGHT)
+                yDest = -global.screen_height;
 
-        if (direction === MotionDirection.UP ||
-            direction === MotionDirection.UP_LEFT ||
-            direction === MotionDirection.UP_RIGHT)
-            yDest = screen_height;
-        else if (direction === MotionDirection.DOWN ||
-            direction === MotionDirection.DOWN_LEFT ||
-            direction === MotionDirection.DOWN_RIGHT)
-            yDest = -screen_height;
-
-        if (direction === MotionDirection.LEFT ||
-            direction === MotionDirection.UP_LEFT ||
-            direction === MotionDirection.DOWN_LEFT)
-            xDest = screen_width;
-        else if (direction === MotionDirection.RIGHT ||
-                 direction === MotionDirection.UP_RIGHT ||
-                 direction === MotionDirection.DOWN_RIGHT)
-            xDest = -screen_width;
+        if (direction == Meta.MotionDirection.LEFT ||
+            direction == Meta.MotionDirection.UP_LEFT ||
+            direction == Meta.MotionDirection.DOWN_LEFT)
+                xDest = global.screen_width;
+        else if (direction == Meta.MotionDirection.RIGHT ||
+                 direction == Meta.MotionDirection.UP_RIGHT ||
+                 direction == Meta.MotionDirection.DOWN_RIGHT)
+                xDest = -global.screen_width;
 
         for (let i = 0; i < windows.length; i++) {
             let window = windows[i];
-            let {meta_window} = window;
 
-            if (!meta_window.showing_on_its_workspace())
+            if (!window.meta_window.showing_on_its_workspace())
                 continue;
 
-            if ((meta_window === this._movingWindow) ||
-                ((grabOp === GrabOp.MOVING ||
-                  grabOp === GrabOp.KEYBOARD_MOVING)
-                 && meta_window === focus_window)) {
+            if ((window.meta_window == this._movingWindow) ||
+                ((global.display.get_grab_op() == Meta.GrabOp.MOVING ||
+                  global.display.get_grab_op() == Meta.GrabOp.KEYBOARD_MOVING)
+                 && window.meta_window == global.display.get_focus_window())) {
                 /* We are moving this window to the other workspace. In fact,
                  * it is already on the other workspace, so it is hidden. We
                  * force it to show and then don't animate it, so it stays
                  * there while other windows move. */
                 window.show_all();
                 this._movingWindow = undefined;
-            } else if (window.get_workspace() === from) {
+            } else if (window.get_workspace() == from) {
                 if (window.origX == undefined) {
                     window.origX = window.x;
                     window.origY = window.y;
                 }
-                addTween(window,
+                Tweener.addTween(window,
                         { x: window.origX + xDest,
                           y: window.origY + yDest,
                           time: WINDOW_ANIMATION_TIME,
@@ -863,88 +792,87 @@ var WindowManager = class WindowManager {
                               window.origY = undefined;
                           }
                         });
-            } else if (window.get_workspace() === to) {
+            } else if (window.get_workspace() == to) {
                 if (window.origX == undefined) {
                     window.origX = window.x;
                     window.origY = window.y;
                     window.set_position(window.origX - xDest, window.origY - yDest);
                 }
-                addTween(window, {
-                    x: window.origX,
-                    y: window.origY,
-                    time: WINDOW_ANIMATION_TIME,
-                    transition: 'easeOutQuad',
-                    onComplete: function() {
-                        window.origX = undefined;
-                        window.origY = undefined;
-                    }
-                });
+                Tweener.addTween(window,
+                        { x: window.origX,
+                          y: window.origY,
+                          time: WINDOW_ANIMATION_TIME,
+                          transition: 'easeOutQuad',
+                          onComplete: Lang.bind(window, function() {
+                              window.origX = undefined;
+                              window.origY = undefined;
+                          })
+                        });
                 window.show_all();
             }
         }
 
-        addTween(this, {time: WINDOW_ANIMATION_TIME, onComplete: function() {
+        Tweener.addTween(this, {time: WINDOW_ANIMATION_TIME, onComplete: function() {
             cinnamonwm.completed_switch_workspace();
         }});
-    }
+    },
 
-    _showTilePreview(cinnamonwm, window, tileRect, monitorIndex, snapQueued) {
+    _showTilePreview: function(cinnamonwm, window, tileRect, monitorIndex, snapQueued) {
         if (!this._tilePreview)
             this._tilePreview = new TilePreview();
-        this._tilePreview.show(window, tileRect, monitorIndex, snapQueued, this.settingsState['desktop-effects']);
-    }
+        this._tilePreview.show(window, tileRect, monitorIndex, snapQueued);
+    },
 
-    _hideTilePreview(cinnamonwm) {
+    _hideTilePreview: function(cinnamonwm) {
         if (!this._tilePreview)
             return;
-        this._tilePreview.hide(this.settingsState['desktop-effects']);
+        this._tilePreview.hide();
         this._tilePreview.destroy();
         this._tilePreview = null;
-    }
+    },
 
-    _showHudPreview(cinnamonwm, currentProximityZone, workArea, snapQueued) {
-        if (global.settings.get_boolean('show-tile-hud')) {
+    _showHudPreview: function(cinnamonwm, currentProximityZone, workArea, snapQueued) {
+        if (global.settings.get_boolean("show-tile-hud")) {
             if (!this._hudPreview)
                 this._hudPreview = new HudPreview();
-            this._hudPreview.show(currentProximityZone, workArea, snapQueued, this.settingsState['desktop-effects']);
+            this._hudPreview.show(currentProximityZone, workArea, snapQueued);
         }
-    }
+    },
 
-    _hideHudPreview(cinnamonwm) {
+    _hideHudPreview: function(cinnamonwm) {
         if (!this._hudPreview)
             return;
-        this._hudPreview.hide(this.settingsState['desktop-effects']);
+        this._hudPreview.hide();
         this._hudPreview.destroy();
         this._hudPreview = null;
-    }
+    },
 
-    showWorkspaceOSD() {
+    showWorkspaceOSD : function() {
         this._hideSnapOSD();
         this._hideWorkspaceOSD();
-        if (global.settings.get_boolean('workspace-osd-visible')) {
-            let osd_x = global.settings.get_int('workspace-osd-x');
-            let osd_y = global.settings.get_int('workspace-osd-y');
-            let duration = global.settings.get_int('workspace-osd-duration') / 1000;
+        if (global.settings.get_boolean("workspace-osd-visible")) {
+            let osd_x = global.settings.get_int("workspace-osd-x");
+            let osd_y = global.settings.get_int("workspace-osd-y");
+            let duration = global.settings.get_int("workspace-osd-duration") / 1000;
             let current_workspace_index = global.screen.get_active_workspace_index();
-            if (this.settings.get_boolean('workspaces-only-on-primary')) {
-                this._showWorkspaceOSDOnMonitor(layoutManager.primaryMonitor, osd_x, osd_y, duration, current_workspace_index);
+            if (this.settings.get_boolean("workspaces-only-on-primary")) {
+                this._showWorkspaceOSDOnMonitor(Main.layoutManager.primaryMonitor, osd_x, osd_y, duration, current_workspace_index);
             }
             else {
-                let {monitors} = layoutManager;
-                for (let i = 0; i < monitors.length; i++) {
-                    this._showWorkspaceOSDOnMonitor(monitors[i], osd_x, osd_y, duration, current_workspace_index);
+                for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
+                    let monitor = Main.layoutManager.monitors[i];
+                    this._showWorkspaceOSDOnMonitor(monitor, osd_x, osd_y, duration, current_workspace_index);
                 }
             }
         }
-    }
+    },
 
-    _showWorkspaceOSDOnMonitor(monitor, osd_x, osd_y, duration, current_workspace_index) {
-        let osd = new Label({style_class:'workspace-osd', important: true});
-        let effectsEnabled = this.settingsState['desktop-effects'];
+    _showWorkspaceOSDOnMonitor : function(monitor, osd_x, osd_y, duration, current_workspace_index) {
+        let osd = new St.Label({style_class:'workspace-osd', important: true});
         this._workspace_osd_array.push(osd);
-        osd.set_text(getWorkspaceName(current_workspace_index));
-        if (effectsEnabled) osd.set_opacity = 0;
-        layoutManager.addChrome(osd, { visibleInFullscreen: false, affectsInputRegion: false });
+        osd.set_text(Main.getWorkspaceName(current_workspace_index));
+        osd.set_opacity = 0;
+        Main.layoutManager.addChrome(osd, { visibleInFullscreen: false, affectsInputRegion: false });
         /*
          * This aligns the osd edges to the minimum/maximum values from gsettings,
          * if those are selected to be used. For values in between minimum/maximum,
@@ -959,78 +887,69 @@ var WindowManager = class WindowManager {
         delta = (osd_y - minY) / (maxY - minY);
         let y = monitor.y + Math.round((monitor.height * osd_y / 100) - (osd.height * delta));
         osd.set_position(x, y);
+        Tweener.addTween(osd, { opacity: 255,
+                                time: duration,
+                                transition: 'linear',
+                                onComplete: this._hideWorkspaceOSD,
+                                onCompleteScope: this });
+    },
 
-        if (effectsEnabled) {
-            addTween(osd, {
-                opacity: 255,
-                time: duration,
-                transition: 'linear',
-                onComplete: () => this._hideWorkspaceOSD()
-            });
-            return;
-        }
-        setTimeout(() => this._hideWorkspaceOSD(), duration * 1000);
-    }
-
-    _hideWorkspaceOSD() {
+    _hideWorkspaceOSD : function() {
         for (let i = 0; i < this._workspace_osd_array.length; i++) {
             let osd = this._workspace_osd_array[i];
             if (osd != null) {
                 osd.hide();
-                layoutManager.removeChrome(osd);
+                Main.layoutManager.removeChrome(osd);
                 osd.destroy();
             }
         }
         this._workspace_osd_array = []
-    }
+    },
 
-    _showSnapOSD(metaScreen, monitorIndex) {
-        if (global.settings.get_boolean('show-snap-osd')) {
+    _showSnapOSD : function(metaScreen, monitorIndex) {
+        if (global.settings.get_boolean("show-snap-osd")) {
             if (this._snapOsd == null) {
-                this._snapOsd = new InfoOSD();
+                this._snapOsd = new ModalDialog.InfoOSD();
 
-                let mod = this.settings.get_string('snap-modifier');
-                if (mod === 'Super')
+                let mod = this.settings.get_string("snap-modifier");
+                if (mod == "Super")
                     this._snapOsd.addText(_("Hold <Super> to enter snap mode"));
-                else if (mod === 'Alt')
+                else if (mod == "Alt")
                     this._snapOsd.addText(_("Hold <Alt> to enter snap mode"));
-                else if (mod === 'Control')
+                else if (mod == "Control")
                     this._snapOsd.addText(_("Hold <Ctrl> to enter snap mode"));
-                else if (mod === 'Shift')
+                else if (mod == "Shift")
                     this._snapOsd.addText(_("Hold <Shift> to enter snap mode"));
-                this._snapOsd.addText(_("Use the arrow or numeric keys to switch workspaces while dragging"));
+                this._snapOsd.addText(_("Use the arrow keys to shift workspaces"));
             }
             this._snapOsd.show(monitorIndex);
         }
-    }
+    },
 
-    _hideSnapOSD() {
+    _hideSnapOSD : function() {
         if (this._snapOsd != null) {
             this._snapOsd.hide();
         }
-    }
+    },
 
-    _createAppSwitcher(binding) {
-        if (getWindowsForBinding(binding).length === 0) return;
+    _createAppSwitcher : function(binding) {
+        if (AppSwitcher.getWindowsForBinding(binding).length == 0)
+            return;
+        let style = global.settings.get_string("alttab-switcher-style");
+        if(style == 'coverflow')
+            new CoverflowSwitcher.CoverflowSwitcher(binding);
+        else if(style == 'timeline')
+            new TimelineSwitcher.TimelineSwitcher(binding);
+        else
+            new ClassicSwitcher.ClassicSwitcher(binding);
+    },
 
-        switch (global.settings.get_string('alttab-switcher-style')) {
-            case 'coverflow':
-                new CoverflowSwitcher(binding);
-                break;
-            case 'timeline':
-                new TimelineSwitcher(binding);
-                break;
-            default:
-                new ClassicSwitcher(binding);
-        }
-    }
-
-    _startAppSwitcher(display, screen, window, binding) {
+    _startAppSwitcher : function(display, screen, window, binding) {
         this._createAppSwitcher(binding);
-    }
+    },
 
-    _shiftWindowToWorkspace(window, direction) {
-        if (window.window_type === WindowType.DESKTOP) {
+    _shiftWindowToWorkspace : function(window, direction) {
+        if (window.get_window_type() === Meta.WindowType.DESKTOP) {
             return;
         }
         this._movingWindow = window;
@@ -1039,17 +958,17 @@ var WindowManager = class WindowManager {
             window.change_workspace(workspace);
             workspace.activate_with_focus(window, global.get_current_time());
         }
-    }
+    },
 
-    _moveWindowToWorkspaceLeft(display, screen, window, binding) {
-        this._shiftWindowToWorkspace(window, MotionDirection.LEFT);
-    }
+    _moveWindowToWorkspaceLeft : function(display, screen, window, binding) {
+        this._shiftWindowToWorkspace(window, Meta.MotionDirection.LEFT);
+    },
 
-    _moveWindowToWorkspaceRight(display, screen, window, binding) {
-        this._shiftWindowToWorkspace(window, MotionDirection.RIGHT);
-    }
+    _moveWindowToWorkspaceRight : function(display, screen, window, binding) {
+        this._shiftWindowToWorkspace(window, Meta.MotionDirection.RIGHT);
+    },
 
-    moveToWorkspace(workspace, direction_hint) {
+    moveToWorkspace: function(workspace, direction_hint) {
         let active = global.screen.get_active_workspace();
         if (workspace != active) {
             if (direction_hint)
@@ -1057,66 +976,65 @@ var WindowManager = class WindowManager {
             else
                 workspace.activate(global.get_current_time());
         }
-    }
+    },
 
-    _showWorkspaceSwitcher(display, screen, window, binding) {
-        let bindingName = binding.get_name();
-        if (bindingName === 'switch-to-workspace-up') {
-            expo.toggle();
+    _showWorkspaceSwitcher : function(display, screen, window, binding) {
+        if (binding.get_name() == 'switch-to-workspace-up') {
+            Main.expo.toggle();
             return;
         }
-        if (bindingName === 'switch-to-workspace-down') {
-            overview.toggle();
+        if (binding.get_name() == 'switch-to-workspace-down') {
+            Main.overview.toggle();
             return;
         }
 
-        if (screen.n_workspaces === 1)
+        if (screen.n_workspaces == 1)
             return;
 
-        if (bindingName === 'switch-to-workspace-left') {
-            this.actionMoveWorkspaceLeft();
-        } else if (bindingName === 'switch-to-workspace-right') {
-            this.actionMoveWorkspaceRight();
+        if (binding.get_name() == 'switch-to-workspace-left') {
+           this.actionMoveWorkspaceLeft();
+        } else if (binding.get_name() == 'switch-to-workspace-right') {
+           this.actionMoveWorkspaceRight();
         }
-    }
+    },
 
-    actionMoveWorkspaceLeft() {
+    actionMoveWorkspaceLeft: function() {
         let active = global.screen.get_active_workspace();
-        let neighbor = active.get_neighbor(MotionDirection.LEFT)
+        let neighbor = active.get_neighbor(Meta.MotionDirection.LEFT)
         if (active != neighbor) {
-            this.moveToWorkspace(neighbor, MotionDirection.LEFT);
+            this.moveToWorkspace(neighbor, Meta.MotionDirection.LEFT);
         }
-    }
+    },
 
-    actionMoveWorkspaceRight() {
+    actionMoveWorkspaceRight: function() {
         let active = global.screen.get_active_workspace();
-        let neighbor = active.get_neighbor(MotionDirection.RIGHT)
+        let neighbor = active.get_neighbor(Meta.MotionDirection.RIGHT)
         if (active != neighbor) {
-            this.moveToWorkspace(neighbor, MotionDirection.RIGHT);
+            this.moveToWorkspace(neighbor, Meta.MotionDirection.RIGHT);
         }
-    }
+    },
 
-    actionMoveWorkspaceUp() {
-        global.screen.get_active_workspace().get_neighbor(MotionDirection.UP).activate(global.get_current_time());
-    }
+    actionMoveWorkspaceUp: function() {
+        global.screen.get_active_workspace().get_neighbor(Meta.MotionDirection.UP).activate(global.get_current_time());
+    },
 
-    actionMoveWorkspaceDown() {
-        global.screen.get_active_workspace().get_neighbor(MotionDirection.DOWN).activate(global.get_current_time());
-    }
+    actionMoveWorkspaceDown: function() {
+        global.screen.get_active_workspace().get_neighbor(Meta.MotionDirection.DOWN).activate(global.get_current_time());
+    },
 
-    actionFlipWorkspaceLeft() {
-        let active = global.screen.get_active_workspace();
-        let neighbor = active.get_neighbor(MotionDirection.LEFT);
+    actionFlipWorkspaceLeft: function() {
+        var active = global.screen.get_active_workspace();
+        var neighbor = active.get_neighbor(Meta.MotionDirection.LEFT);
         if (active != neighbor) {
             neighbor.activate(global.get_current_time());
             let [x, y, mods] = global.get_pointer();
             global.set_pointer(global.screen_width - 10, y);
         }
-    }
+    },
 
-    actionFlipWorkspaceRight() {
-        let active = global.screen.get_active_workspace();
-        let neighbor = active.get_neighbor(MotionDirection.RIGHT);
+    actionFlipWorkspaceRight: function() {
+        var active = global.screen.get_active_workspace();
+        var neighbor = active.get_neighbor(Meta.MotionDirection.RIGHT);
         if (active != neighbor) {
             neighbor.activate(global.get_current_time());
             let [x, y, mods] = global.get_pointer();

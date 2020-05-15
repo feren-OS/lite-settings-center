@@ -76,7 +76,6 @@ const CinnamonIface =
                 <arg type="s" direction="in" /> \
                 <arg type="s" direction="in" /> \
             </method> \
-            <method name="induceSegfault" /> \
             <method name="switchWorkspaceRight" /> \
             <method name="switchWorkspaceLeft" /> \
             <method name="switchWorkspaceUp" /> \
@@ -106,6 +105,10 @@ const CinnamonIface =
                 <arg type="b" direction="in" name="success" /> \
             </method> \
             <method name="ToggleKeyboard"/> \
+            <method name="OpenSpicesAbout"> \
+                <arg type="s" direction="in" name="uuid" /> \
+                <arg type="s" direction="in" name="type" /> \
+            </method> \
             <method name="GetMonitors"> \
                 <arg type="ai" direction="out" name="monitors" /> \
             </method> \
@@ -348,18 +351,7 @@ CinnamonDBus.prototype = {
     },
 
     updateSetting: function(uuid, instance_id, key, payload) {
-        if (!Main.settingsManager.uuids[uuid]) {
-            global.logWarning(
-                `[CinnamonDBus] [${uuid}] Unable to find UUID from SettingsManager - ` +
-                'this is likely due to configuring settings from a removed xlet.'
-            );
-            return;
-        }
         Main.settingsManager.uuids[uuid][instance_id].remoteUpdate(key, payload);
-    },
-
-    induceSegfault: function() {
-        global.segfault();
     },
 
     switchWorkspaceLeft: function() {
@@ -413,6 +405,12 @@ CinnamonDBus.prototype = {
 
     ToggleKeyboard: function() {
         Main.keyboard.toggle();
+    },
+
+    OpenSpicesAbout: function(uuid, type) {
+        Extension.getMetadata(uuid, Extension.Type[type.toUpperCase()]).then(function(metadata) {
+            new ModalDialog.SpicesAboutDialog(metadata, `${type}s`);
+        });
     },
 
     GetMonitors: function() {

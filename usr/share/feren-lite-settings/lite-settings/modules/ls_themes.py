@@ -1,34 +1,13 @@
 #!/usr/bin/python3
 
-import os
-import subprocess
-
 from gi.repository.Gtk import SizeGroup, SizeGroupMode
 
-from xapp.GSettingsWidgets import *
-from CinnamonGtkSettings import CssRange, CssOverrideSwitch, GtkSettingsSwitch, PreviewWidget, Gtk2ScrollbarSizeEditor
-from SettingsWidgets import LabelRow, SidePage, walk_directories
-from ChooserButtonWidgets import PictureChooserButton
-from ExtensionCore import DownloadSpicesPage
-from Spices import Spice_Harvester
+from GSettingsWidgets import *
 
-import glob
+import glob, subprocess
 
 ICON_SIZE = 48
 
-# Gtk and Cinnamon check folders in order of precedence.  These lists match the
-# order.  It doesn't really matter here, since we're only looking for names,
-# but it's helpful to be aware of it.
-
-ICON_FOLDERS = [
-    os.path.join(GLib.get_user_data_dir(), "icons"),
-    os.path.join(GLib.get_home_dir(), ".icons")
-] + [os.path.join(datadir, "icons") for datadir in GLib.get_system_data_dirs()]
-
-THEME_FOLDERS = [
-    os.path.join(GLib.get_user_data_dir(), "themes"),
-    os.path.join(GLib.get_home_dir(), ".themes")
-] + [os.path.join(datadir, "themes") for datadir in GLib.get_system_data_dirs()]
 
 class Module:
     comment = _("Manage themes to change how your desktop looks")
@@ -37,68 +16,37 @@ class Module:
 
     def __init__(self, content_box):
         self.keywords = _("themes, style")
-        self.icon = "cs-themes"
+        self.icon = "preferences-desktop-theme"
         self.window = None
         sidePage = SidePage(_("Themes"), self.icon, self.keywords, content_box, module=self)
         self.sidePage = sidePage
+
+    def btn_menuiconsswitch_click(self, switch, toggled):
+        global widgetend1
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xsettings","Gtk","MenuImages",str(not widgetend1.get_state()).lower()])
+    
+    def btn_btniconsswitch_click(self, switch, toggled):
+        global widgetend2
+        subprocess.Popen(["./bin/ManageXfconf.sh","set","xsettings","Gtk","ButtonImages",str(not widgetend2.get_state()).lower()])
 
     def on_module_selected(self):
         if not self.loaded:
             print("Loading Themes module")
 
-            self.spices = Spice_Harvester('theme', self.window)
-
             self.sidePage.stack = SettingsStack()
             self.sidePage.add_widget(self.sidePage.stack)
 
-            self.settings = Gio.Settings.new("org.cinnamon.desktop.interface")
-            self.wm_settings = Gio.Settings.new("org.cinnamon.desktop.wm.preferences")
-            self.cinnamon_settings = Gio.Settings.new("org.cinnamon.theme")
-            self.themer_settings = Gio.Settings.new("org.feren.feren-themer.cinnamon")
-
-            self.scale = self.window.get_scale_factor()
-
-            self.icon_chooser = self.create_button_chooser(self.settings, 'icon-theme', 'icons', 'icons', button_picture_size=ICON_SIZE, menu_pictures_size=ICON_SIZE, num_cols=4)
-            self.cursor_chooser = self.create_button_chooser(self.settings, 'cursor-theme', 'icons', 'cursors', button_picture_size=32, menu_pictures_size=32, num_cols=4)
-            self.theme_chooser = self.create_button_chooser(self.settings, 'gtk-theme', 'themes', 'gtk-3.0', button_picture_size=35, menu_pictures_size=35, num_cols=4)
-            self.metacity_chooser = self.create_button_chooser(self.wm_settings, 'theme', 'themes', 'metacity-1', button_picture_size=32, menu_pictures_size=32, num_cols=4)
-            self.cinnamon_chooser = self.create_button_chooser(self.cinnamon_settings, 'name', 'themes', 'cinnamon', button_picture_size=60, menu_pictures_size=60*self.scale, num_cols=4)
+            self.icon_chooser = self.create_button_chooser('icon-theme', 'icons', 'icons', button_picture_size=ICON_SIZE, menu_pictures_size=ICON_SIZE, num_cols=4)
+            self.cursor_chooser = self.create_button_chooser('cursor-theme', 'icons', 'cursors', button_picture_size=32, menu_pictures_size=32, num_cols=4)
+            self.theme_chooser = self.create_button_chooser('gtk-theme', 'themes', 'gtk-3.0', button_picture_size=35, menu_pictures_size=35, num_cols=4)
+            self.xfwm_chooser = self.create_button_chooser('theme', 'themes', 'xfwm4', button_picture_size=32, menu_pictures_size=32, num_cols=4)
 
             page = SettingsPage()
             self.sidePage.stack.add_titled(page, "themes", _("Themes"))
 
-            self.themer_chooser = self.create_button_chooser(self.themer_settings, 'theme-name', 'feren-themer/cinnamon/themes/', '', button_picture_size=140, menu_pictures_size=60*self.scale, num_cols=4)
-
             settings = page.add_section(_("Themes"))
-            
-            widget = self.make_group(_("Theme\n<small>Click the button to the right to choose a Theme</small>"), self.themer_chooser)
-            center_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            image = Gtk.Image(stock=Gtk.STOCK_PREFERENCES)
-            button = Gtk.Button(label="Theme Settings", image=image)
-            button.connect("clicked", self.customise_themer_theme)
-            center_box.pack_end(button, False, False, 0)
-            widget.pack_start(center_box, True, True, 0)
-            settings.add_row(widget)
-            
-            widget = SettingsWidget()
-            widget.set_spacing(5)
-            storedisclaimertxt=LabelRow(_("""To install more themes, go into Store > Customisation > Themes."""))
-            widget.pack_start(storedisclaimertxt, True, False, 0)
-            widget.pack_end(storedisclaimertxt, True, False, 0)
-            settings.add_row(widget)
-            
-            widget = GSettingsSwitch(_("Use Desktop Layout from theme"), "org.feren.feren-themer.cinnamon", "allow-layout-change")
-            settings.add_row(widget)
 
-            widget = GSettingsSwitch(_("Restart Cinnamon when Applying Themes (Recommended)"), "org.feren.feren-themer.cinnamon", "allow-cinnamon-restart")
-            settings.add_row(widget)
-
-            page = SettingsPage()
-            self.sidePage.stack.add_titled(page, "themes", _("Mix n' Match"))
-
-            settings = page.add_section(_("Mix n' Match"))
-
-            widget = self.make_group(_("Window borders"), self.metacity_chooser)
+            widget = self.make_group(_("Window borders"), self.xfwm_chooser)
             settings.add_row(widget)
 
             widget = self.make_group(_("Icons"), self.icon_chooser)
@@ -110,65 +58,59 @@ class Module:
             widget = self.make_group(_("Mouse Pointer"), self.cursor_chooser)
             settings.add_row(widget)
 
-            widget = self.make_group(_("Desktop"), self.cinnamon_chooser)
-            settings.add_row(widget)
-
-            page = DownloadSpicesPage(self, 'theme', self.spices, self.window)
-            self.sidePage.stack.add_titled(page, 'download', _("Add/Remove"))
-
-            page = SettingsPage()
-            self.sidePage.stack.add_titled(page, "options", _("Settings"))
-
             settings = page.add_section(_("Miscellaneous options"))
 
-            widget = GSettingsSwitch(_("Show icons in menus"), "org.cinnamon.settings-daemon.plugins.xsettings", "menus-have-icons")
+            global widgetend1
+            global widgetend2
+            
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show icons in menus")
+            widgetend1 = Gtk.Switch()
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xsettings Gtk MenuImages")
+            if widgetstate.upper() == "FALSE":
+                widgetend1.set_state(False)
+            else:
+                widgetend1.set_state(True)
+            widgetend1.connect('state-set', self.btn_menuiconsswitch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend1, False, True, 0)
+            settings.add_row(widget)
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Show icons in buttons")
+            widgetend2 = Gtk.Switch()
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xsettings Gtk ButtonImages")
+            if widgetstate.upper() == "FALSE":
+                widgetend2.set_state(False)
+            else:
+                widgetend2.set_state(True)
+            widgetend2.connect('state-set', self.btn_btniconsswitch_click)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(widgetend2, False, True, 0)
             settings.add_row(widget)
 
-            widget = GSettingsSwitch(_("Show icons on buttons"), "org.cinnamon.settings-daemon.plugins.xsettings", "buttons-have-icons")
+            global combo1
+            widget = SettingsWidget()
+            widgetstart = Gtk.Label()
+            widgetstart.set_markup("Window Title position (XFWM4)")
+            combo1 = Gtk.ComboBoxText()
+            combo1.append_text('Left')
+            combo1.append_text('Centre')
+            combo1.append_text('Right')
+            widgetstate = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general title_alignment")
+            combo1.connect('changed', self.on_title_align_changed)
+            widget.pack_start(widgetstart, False, False, 0)
+            widget.pack_end(combo1, False, True, 0)
             settings.add_row(widget)
+            if widgetstate == "left":
+                combo1.set_active(0)
+            elif widgetstate == "center":
+                combo1.set_active(1)
+            elif widgetstate == "right":
+                combo1.set_active(2)
 
-            settings = page.add_section(_("Scrollbar behavior"))
-
-            # Translators: The 'trough' is the part of the scrollbar that the 'handle'
-            # rides in.  This setting determines whether clicking in that trough somewhere
-            # jumps directly to the new position, or if it only scrolls towards it.
-            switch = GtkSettingsSwitch(_("Jump to position when clicking in a trough"), "gtk-primary-button-warps-slider")
-            settings.add_row(switch)
-
-            widget = GSettingsSwitch(_("Use overlay scroll bars"), "org.cinnamon.desktop.interface", "gtk-overlay-scrollbars")
-            settings.add_row(widget)
-
-            self.gtk2_scrollbar_editor = Gtk2ScrollbarSizeEditor(widget.get_scale_factor())
-
-            switch = CssOverrideSwitch(_("Override the current theme's scrollbar width"))
-            settings.add_row(switch)
-            self.scrollbar_switch = switch.content_widget
-
-            widget = CssRange(_("Scrollbar width"), "scrollbar slider", ["min-width", "min-height"], 2, 40, "px", None, switch)
-            settings.add_reveal_row(widget)
-
-            try:
-                widget.sync_initial_switch_state()
-            except PermissionError as e:
-                print(e)
-                switch.set_sensitive(False)
-
-            self.scrollbar_css_range = widget.content_widget
-            self.scrollbar_css_range.get_adjustment().set_page_increment(2.0)
-
-            switch.content_widget.connect("notify::active", self.on_css_override_active_changed)
-            widget.content_widget.connect("value-changed", self.on_range_slider_value_changed)
-
-            self.on_css_override_active_changed(switch)
-
-            widget = PreviewWidget()
-            settings.add_row(widget)
-
-            label_widget = LabelRow(_(
-"""Changes will take effect the next time you log in and may not affect all applications."""))
-            settings.add_row(label_widget)
-
-            self.builder = self.sidePage.builder
+            self.builder = self.sidePage.builder        
 
             for path in [os.path.expanduser("~/.themes"), os.path.expanduser("~/.icons")]:
                 try:
@@ -190,35 +132,25 @@ class Module:
 
             self.refresh()
 
-    def on_css_override_active_changed(self, switch, pspec=None, data=None):
-        if self.scrollbar_switch.get_active():
-            self.gtk2_scrollbar_editor.set_size(self.scrollbar_css_range.get_value())
-        else:
-            self.gtk2_scrollbar_editor.set_size(0)
-
-    def on_range_slider_value_changed(self, widget, data=None):
-        if self.scrollbar_switch.get_active():
-            self.gtk2_scrollbar_editor.set_size(widget.get_value())
+    def on_title_align_changed(self, dropdown):
+        global combo1
+        option=combo1.get_active()
+        if option == 0:
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","title_alignment","left"])
+        elif option == 1:
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","title_alignment","center"])
+        elif option == 2:
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","title_alignment","right"])
 
     def on_file_changed(self, file, other, event, data):
         self.refresh()
-    
-    def customise_themer_theme(self, widget):                                
-        try:
-            os.system("themer-file-config-cinnamon")
-        except:
-            mde = Gtk.MessageDialog(self, 0, Gtk.MessageType.ERROR, Gtk.ButtonsType.OK, "An error has occured")
-            mde.run()
-            mde.destroy()
 
     def refresh(self):
         choosers = []
         choosers.append((self.cursor_chooser, "cursors", self._load_cursor_themes(), self._on_cursor_theme_selected))
         choosers.append((self.theme_chooser, "gtk-3.0", self._load_gtk_themes(), self._on_gtk_theme_selected))
-        choosers.append((self.metacity_chooser, "metacity-1", self._load_metacity_themes(), self._on_metacity_theme_selected))
-        choosers.append((self.cinnamon_chooser, "cinnamon", self._load_cinnamon_themes(), self._on_cinnamon_theme_selected))
+        choosers.append((self.xfwm_chooser, "xfwm4", self._load_xfwm4_themes(), self._on_xfwm4_theme_selected))
         choosers.append((self.icon_chooser, "icons", self._load_icon_themes(), self._on_icon_theme_selected))
-        choosers.append((self.themer_chooser, "feren-themer/themes", self._load_themer_themes(), self._on_themer_theme_selected))
         for chooser in choosers:
             chooser[0].clear_menu()
             chooser[0].set_sensitive(False)
@@ -238,93 +170,28 @@ class Module:
         if len(themes) > 0:
             inc = 1.0 / len(themes)
 
-        if path_suffix == 'icons':
-            cache_folder = GLib.get_user_cache_dir() + '/cs_themes/'
-            icon_cache_path = os.path.join(cache_folder, 'icons')
-
-            # Retrieve list of known themes/locations for faster loading (icon theme loading and lookup are very slow)
-            if os.path.exists(icon_cache_path):
-                read_path = icon_cache_path
-            else:
-                read_path = '/usr/share/cinnamon/cinnamon-settings/icons'
-
-            icon_paths = {}
-            with open(read_path, 'r') as cache_file:
-                for line in cache_file:
-                    theme_name, icon_path = line.strip().split(':')
-                    icon_paths[theme_name] = icon_path
-
-            dump = False
+        if path_suffix == "icons":
             for theme in themes:
-                theme_path = None
-
-                if theme in icon_paths:
-                    # loop through all possible locations until we find a match
-                    # (user folders should override system ones)
-                    for theme_folder in ICON_FOLDERS:
-                        possible_path = os.path.join(theme_folder, icon_paths[theme])
-                        if os.path.exists(possible_path):
-                            theme_path = possible_path
-                            break
-
-                if theme_path is None:
-                    icon_theme = Gtk.IconTheme()
-                    icon_theme.set_custom_theme(theme)
-                    folder = icon_theme.lookup_icon('folder', ICON_SIZE, Gtk.IconLookupFlags.FORCE_SVG)
-                    if folder:
-                        theme_path = folder.get_filename()
-
-                        # we need to get the relative path for storage
-                        for theme_folder in ICON_FOLDERS:
-                            if os.path.commonpath([theme_folder, theme_path]) == theme_folder:
-                                icon_paths[theme] = os.path.relpath(theme_path, start=theme_folder)
-                                break
-
-                    dump = True
-
-                if theme_path == None:
-                    continue;
-
-                if os.path.exists(theme_path):
-                    chooser.add_picture(theme_path, callback, title=theme, id=theme)
-                GLib.timeout_add(5, self.increment_progress, (chooser, inc))
-
-            if dump:
-                if not os.path.exists(cache_folder):
-                    os.mkdir(cache_folder)
-
-                with open(icon_cache_path, 'w') as cache_file:
-                    for theme_name, icon_path in icon_paths.items():
-                        cache_file.write('%s:%s\n' % (theme_name, icon_path))
-
+                icon_theme = Gtk.IconTheme()
+                icon_theme.set_custom_theme(theme)
+                folder = icon_theme.lookup_icon("folder", ICON_SIZE, Gtk.IconLookupFlags.FORCE_SVG)
+                if folder:
+                    path = folder.get_filename()
+                    chooser.add_picture(path, callback, title=theme, id=theme)
+                GLib.timeout_add(5, self.increment_progress, (chooser,inc))
         else:
-            if path_suffix == "cinnamon":
-                chooser.add_picture("/usr/share/cinnamon/theme/thumbnail.png", callback, title="cinnamon", id="cinnamon")
-            if path_suffix == "feren-themer/themes":
-                for theme in themes:
-                    theme_name = theme
-                    theme_path = "/usr/share/feren-themer/cinnamon/themes/"
-                    try:
-                        for path in ["/usr/share/feren-themer/cinnamon/themes/%s/thumbnail.png" % (theme_name),
-                        "/usr/share/cinnamon/thumbnails/themes/%s.png" % (theme_name),
-                        "/usr/share/cinnamon/thumbnails/themes/unknown.png"]:
-                            if os.path.exists(path):
-                                chooser.add_picture(path, callback, title=theme_name, id=theme_name)
-                                break
-                    except:
-                        chooser.add_picture("/usr/share/cinnamon/thumbnails/themes/unknown.png", callback, title=theme_name, id=theme_name)
             for theme in themes:
                 theme_name = theme[0]
                 theme_path = theme[1]
                 try:
                     for path in ["%s/%s/%s/thumbnail.png" % (theme_path, theme_name, path_suffix),
-                                 "/usr/share/cinnamon/thumbnails/%s/%s.png" % (path_suffix, theme_name),
-                                 "/usr/share/cinnamon/thumbnails/%s/unknown.png" % path_suffix]:
+                                 "/usr/share/feren-lite-settings/thumbnails/%s/%s.png" % (path_suffix, theme_name),
+                                 "/usr/share/feren-lite-settings/thumbnails/%s/unknown.png" % path_suffix]:
                         if os.path.exists(path):
                             chooser.add_picture(path, callback, title=theme_name, id=theme_name)
                             break
                 except:
-                    chooser.add_picture("/usr/share/cinnamon/thumbnails/%s/unknown.png" % path_suffix, callback, title=theme_name, id=theme_name)
+                    chooser.add_picture("/usr/share/feren-lite-settings/thumbnails/%s/unknown.png" % path_suffix, callback, title=theme_name, id=theme_name)
                 GLib.timeout_add(5, self.increment_progress, (chooser, inc))
         GLib.timeout_add(500, self.hide_progress, chooser)
 
@@ -353,14 +220,20 @@ class Module:
 
         return box
 
-    def create_button_chooser(self, settings, key, path_prefix, path_suffix, button_picture_size, menu_pictures_size, num_cols):
+    def create_button_chooser(self, key, path_prefix, path_suffix, button_picture_size, menu_pictures_size, num_cols):
         chooser = PictureChooserButton(num_cols=num_cols, button_picture_size=button_picture_size, menu_pictures_size=menu_pictures_size, has_button_label=True)
-        theme = settings.get_string(key)
+        if path_suffix == "xfwm4":
+            theme = subprocess.getoutput("./bin/ManageXfconf.sh get xfwm4 general theme")
+        elif path_suffix == "cursors":
+            theme = subprocess.getoutput("./bin/ManageXfconf.sh get xsettings Gtk CursorThemeName")
+        elif path_suffix == "icons":
+            theme = subprocess.getoutput("./bin/ManageXfconf.sh get xsettings Net IconThemeName")
+        elif path_suffix == "gtk-3.0":
+            theme = subprocess.getoutput("./bin/ManageXfconf.sh get xsettings Net ThemeName")
+        
         chooser.set_button_label(theme)
         chooser.set_tooltip_text(theme)
-        if path_suffix == "cinnamon" and theme == "cinnamon":
-            chooser.set_picture_from_file("/usr/share/cinnamon/theme/thumbnail.png")
-        elif path_suffix == "icons":
+        if path_suffix == "icons":
             current_theme = Gtk.IconTheme.get_default()
             folder = current_theme.lookup_icon("folder", button_picture_size, 0)
             if folder is not None:
@@ -370,36 +243,36 @@ class Module:
             try:
                 for path in ["/usr/share/%s/%s/%s/thumbnail.png" % (path_prefix, theme, path_suffix),
                              os.path.expanduser("~/.%s/%s/%s/thumbnail.png" % (path_prefix, theme, path_suffix)),
-                             "/usr/share/cinnamon/thumbnails/%s/%s.png" % (path_suffix, theme),
-                             "/usr/share/cinnamon/thumbnails/%s/unknown.png" % path_suffix]:
+                             "/usr/share/feren-lite-settings/thumbnails/%s/%s.png" % (path_suffix, theme),
+                             "/usr/share/feren-lite-settings/thumbnails/%s/unknown.png" % path_suffix]:
                     if os.path.exists(path):
                         chooser.set_picture_from_file(path)
                         break
             except:
-                chooser.set_picture_from_file("/usr/share/cinnamon/thumbnails/%s/unknown.png" % path_suffix)
+                chooser.set_picture_from_file("/usr/share/feren-lite-settings/thumbnails/%s/unknown.png" % path_suffix)
         return chooser
 
     def _on_icon_theme_selected(self, path, theme):
         try:
-            self.settings.set_string("icon-theme", theme)
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xsettings","Net","IconThemeName",theme])
             self.icon_chooser.set_button_label(theme)
             self.icon_chooser.set_tooltip_text(theme)
         except Exception as detail:
             print(detail)
         return True
 
-    def _on_metacity_theme_selected(self, path, theme):
+    def _on_xfwm4_theme_selected(self, path, theme):
         try:
-            self.wm_settings.set_string("theme", theme)
-            self.metacity_chooser.set_button_label(theme)
-            self.metacity_chooser.set_tooltip_text(theme)
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xfwm4","general","theme",theme])
+            self.xfwm_chooser.set_button_label(theme)
+            self.xfwm_chooser.set_tooltip_text(theme)
         except Exception as detail:
             print(detail)
         return True
 
     def _on_gtk_theme_selected(self, path, theme):
         try:
-            self.settings.set_string("gtk-theme", theme)
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xsettings","Net","ThemeName",theme])
             self.theme_chooser.set_button_label(theme)
             self.theme_chooser.set_tooltip_text(theme)
         except Exception as detail:
@@ -408,7 +281,7 @@ class Module:
 
     def _on_cursor_theme_selected(self, path, theme):
         try:
-            self.settings.set_string("cursor-theme", theme)
+            subprocess.Popen(["./bin/ManageXfconf.sh","set","xsettings","Gtk","CursorThemeName",theme])
             self.cursor_chooser.set_button_label(theme)
             self.cursor_chooser.set_tooltip_text(theme)
         except Exception as detail:
@@ -416,29 +289,10 @@ class Module:
 
         self.update_cursor_theme_link(path, theme)
         return True
-    
-    def _on_themer_theme_selected(self, path, theme):
-        try:
-            self.themer_settings.set_string("theme-name", theme)
-            self.themer_chooser.set_button_label(theme)
-            self.themer_chooser.set_tooltip_text(theme)
-            subprocess.call(['themer-file-apply-cinnamon', "/usr/share/feren-themer/cinnamon/themes/"+theme])
-        except Exception as detail:
-            print(detail)
-        return True
-
-    def _on_cinnamon_theme_selected(self, path, theme):
-        try:
-            self.cinnamon_settings.set_string("name", theme)
-            self.cinnamon_chooser.set_button_label(theme)
-            self.cinnamon_chooser.set_tooltip_text(theme)
-        except Exception as detail:
-            print(detail)
-        return True
 
     def _load_gtk_themes(self):
         """ Only shows themes that have variations for gtk+-3 and gtk+-2 """
-        dirs = THEME_FOLDERS
+        dirs = ("/usr/share/themes", os.path.join(os.path.expanduser("~"), ".themes"))
         valid = walk_directories(dirs, self.filter_func_gtk_dir, return_directories=True)
         valid.sort(key=lambda a: a[0].lower())
         res = []
@@ -463,7 +317,7 @@ class Module:
         return False
 
     def _load_icon_themes(self):
-        dirs = ICON_FOLDERS
+        dirs = ("/usr/share/icons", os.path.join(os.path.expanduser("~"), ".icons"))
         walked = walk_directories(dirs, lambda d: os.path.isdir(d), return_directories=True)
         valid = []
         for directory in walked:
@@ -488,26 +342,9 @@ class Module:
                         res.remove(j)
             res.append(i[0])
         return res
-    
-    def _load_themer_themes(self):
-        dirs = "/usr/share/feren-themer/cinnamon/themes"
-        #valid = walk_directories(dirs, lambda d: os.path.exists(os.path.join(d)), return_directories=True)
-        valid = os.listdir(dirs)
-        valid = sorted(valid, key=lambda s: s.lower())
-        #valid.sort(lambda a,b: cmp(a[0].lower(), b[0].lower()))
-        #res = []
-        #for i in valid:
-        #   for j in res:
-        #       if i[0] == j[0]:
-        #           if i[1] == dirs[0]:
-        #               continue
-        #           else:
-        #               res.remove(j)
-        #   res.append((i[0], i[1]))
-        return valid
 
     def _load_cursor_themes(self):
-        dirs = ICON_FOLDERS
+        dirs = ("/usr/share/icons", os.path.join(os.path.expanduser("~"), ".icons"))
         valid = walk_directories(dirs, lambda d: os.path.isdir(d) and os.path.exists(os.path.join(d, "cursors")), return_directories=True)
         valid.sort(key=lambda a: a[0].lower())
         res = []
@@ -521,24 +358,9 @@ class Module:
             res.append((i[0], i[1]))
         return res
 
-    def _load_metacity_themes(self):
-        dirs = THEME_FOLDERS
-        valid = walk_directories(dirs, lambda d: os.path.exists(os.path.join(d, "metacity-1/metacity-theme-3.xml")), return_directories=True)
-        valid.sort(key=lambda a: a[0].lower())
-        res = []
-        for i in valid:
-            for j in res:
-                if i[0] == j[0]:
-                    if i[1] == dirs[0]:
-                        continue
-                    else:
-                        res.remove(j)
-            res.append((i[0], i[1]))
-        return res
-
-    def _load_cinnamon_themes(self):
-        dirs = THEME_FOLDERS
-        valid = walk_directories(dirs, lambda d: os.path.exists(os.path.join(d, "cinnamon")), return_directories=True)
+    def _load_xfwm4_themes(self):
+        dirs = ("/usr/share/themes", os.path.join(os.path.expanduser("~"), "/.themes"))
+        valid = walk_directories(dirs, lambda d: os.path.exists(os.path.join(d, "xfwm4/themerc")), return_directories=True)
         valid.sort(key=lambda a: a[0].lower())
         res = []
         for i in valid:

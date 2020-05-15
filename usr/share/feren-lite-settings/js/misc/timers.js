@@ -12,12 +12,14 @@ DebugTimer.prototype = {
     },
 
     start: function() {
-        this.start_time = Date.now();
+        let date = new Date();
+        this.start_time = date.getTime();
         log("Debug timer __" + this.name + "__ started.");
     },
 
     stop: function() {
-        let diff = Date.now() - this.start_time;
+        let date = new Date();
+        let diff = date.getTime() - this.start_time;
         log("Debug timer __" + this.name + "__ stopped at * " + diff.toString() + "ms *")
         this.start_time = 0;
     }

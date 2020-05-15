@@ -1,33 +1,6 @@
 const GObject = imports.gi.GObject;
 const Lang = imports.lang;
 
-const _signalIsConnected = function(signal) {
-    let [sigName, obj, callback, id] = signal;
-    if (!obj) {
-        return false;
-    }
-    if (obj instanceof GObject.Object) { // GObject
-        // MetaWindowActor is always destroyed in muffin, so accessing the
-        // object here will trigger finalized object warnings from CJS.
-        if (obj.is_finalized()) {
-            return false;
-        }
-        return GObject.signal_handler_is_connected(obj, id);
-    }
-    if ('signalHandlerIsConnected' in obj) { // JS Object
-        return obj.signalHandlerIsConnected(id);
-    }
-
-    return false;
-};
-
-const _disconnect = function(results) {
-    for (let i = 0; i < results.length; i++) {
-        let [sigName, obj, callback, id] = results[i];
-        obj.disconnect(id);
-    }
-};
-
 /**
  * #SignalManager:
  * @short_description: A convenience object for managing signals
@@ -58,39 +31,39 @@ const _disconnect = function(results) {
  *
  * An example usage is as follows:
  * ```
- * class MyApplet extends Applet.Applet {
- *     constructor(orientation, panelHeight, instanceId) {
- *         super(orientation, panelHeight, instanceId);
+ * MyApplet.prototype = {
+ *     __proto__: Applet.Applet.prototype,
  *
- *         this._signalManager = new SignalManager.SignalManager(null);
- *         this._signalManager.connect(global.settings, "changed::foo", (...args) => this._onChanged(...args));
- *     }
+ *     _init: function(orientation, panelHeight, instanceId) {
+ *         Applet.Applet.prototype._init.call(this, orientation, panelHeight, instanceId);
  *
- *     _onChanged() {
+ *         this._signalManager = new SignalManager.SignalManager(this);
+ *         this._signalManager.connect(global.settings, "changed::foo", this._onChanged);
+ *     },
+ *
+ *     _onChanged: function() {
  *         // Do something
- *     }
+ *     },
  *
- *     on_applet_removed_from_panel() {
+ *     on_applet_removed_from_panel: function() {
  *         this._signalManager.disconnectAllSignals();
  *     }
  * }
  * ```
  */
+function SignalManager(object) {
+    this._init(object);
+}
 
-var SignalManager = class SignalManager {
+SignalManager.prototype = {
     /**
      * _init:
-     * @object (Object): the object owning the #SignalManager (usually @this) (Deprecated)
+     * @object (Object): the object owning the #SignalManager (usually @this)
      */
-    constructor(object) {
-        if (object) {
-            global.dump_gjs_stack(
-                'Initializing SignalManager with an object is deprecated.' +
-                ' Please bind the callback before passing it to SignalManager.'
-            );
-        }
+    _init: function(object) {
+        this._object = object;
         this._storage = [];
-    }
+    },
 
     /**
      * connect:
@@ -103,7 +76,9 @@ var SignalManager = class SignalManager {
      * @force (boolean): whether to connect again even if it is connected
      *
      * This listens to the signal @sigName from @obj and calls @callback when
-     * the signal is emitted. @callback is bound to the @bind argument if passed.
+     * the signal is emitted. @callback is automatically binded to
+     * %this._object, unless the @bind argument is set to something else, in
+     * which case the function will be binded to @bind.
      *
      * This checks whether the signal is already connected and will not connect
      * again if it is already connected. This behaviour can be overridden by
@@ -123,23 +98,44 @@ var SignalManager = class SignalManager {
      * signal name, then the object (since the object is rarely passed in other
      * functions).
      */
-    _connect(method, obj, sigName, callback, bind, force) {
-        if (!obj || (!force && this.isConnected(sigName, obj, callback)))
-            return;
+    connect: function(obj, sigName, callback, bind, force) {
+        if (!force && this.isConnected(sigName, obj, callback))
+            return
 
-        let id = bind ? obj[method](sigName, Lang.bind(bind, callback))
-            : obj[method](sigName, callback);
+        let id;
+
+        if (bind)
+            id = obj.connect(sigName, Lang.bind(bind, callback));
+        else
+            id = obj.connect(sigName, Lang.bind(this._object, callback));
 
         this._storage.push([sigName, obj, callback, id]);
-    }
+    },
 
-    connect() {
-        this._connect('connect', ...arguments);
-    }
+    connect_after: function(obj, sigName, callback, bind, force) {
+        if (!force && this.isConnected(sigName, obj, callback))
+            return
 
-    connect_after() {
-        this._connect('connect_after', ...arguments);
-    }
+        let id;
+
+        if (bind)
+            id = obj.connect_after(sigName, Lang.bind(bind, callback));
+        else
+            id = obj.connect_after(sigName, Lang.bind(this._object, callback));
+
+        this._storage.push([sigName, obj, callback, id]);
+    },
+
+    _signalIsConnected: function (signal) {
+        if (!signal[1])
+            return false;
+        else if (signal[1] instanceof GObject.Object)// GObject
+            return GObject.signal_handler_is_connected(signal[1], signal[3]);
+        else if ('signalHandlerIsConnected' in signal[1]) // JS Object
+            return signal[1].signalHandlerIsConnected(signal[3]);
+        else
+            return false;
+    },
 
     /**
      * isConnected:
@@ -162,9 +158,9 @@ var SignalManager = class SignalManager {
      *
      * Returns: Whether the signal is connected
      */
-    isConnected() {
-        return this.getSignals.apply(this, arguments).length > 0;
-    }
+    isConnected: function() {
+        return (this.getSignals.apply(this, arguments).length > 0);
+    },
 
     /**
      * getSignals:
@@ -180,7 +176,7 @@ var SignalManager = class SignalManager {
      *
      * Returns (Array): The list of signals
      */
-    getSignals(sigName, obj, callback) {
+    getSignals: function(sigName, obj, callback) {
         let results = this._storage;
 
         if (sigName)
@@ -191,7 +187,7 @@ var SignalManager = class SignalManager {
             results = results.filter(x => x[2] == callback);
 
         return results;
-    }
+    },
 
     /**
      * disconnect:
@@ -209,16 +205,12 @@ var SignalManager = class SignalManager {
      * no longer exists, or the signal is somehow already disconnected. So
      * checks need not be performed before calling this function.
      */
+    disconnect: function() {
+        let results = this.getSignals.apply(this, arguments);
+        results.filter(this._signalIsConnected).forEach(x => x[1].disconnect(x[3]));
 
-    disconnect() {
-        let results = this.getSignals.apply(this, arguments).filter(_signalIsConnected);
-        _disconnect(results);
-        this._storage = this._storage.filter((x) => {
-            return results.findIndex(function(signalObj) {
-                return signalObj[0] === x[0] && signalObj[1] === x[1];
-            }) === -1;
-        });
-    }
+        this._storage = this._storage.filter(x => results.indexOf(x) == -1);
+    },
 
     /**
      * disconnectAllSignals:
@@ -226,10 +218,9 @@ var SignalManager = class SignalManager {
      * Disconnects *all signals* managed by the #SignalManager. This is useful
      * in the @destroy function of objects.
      */
-    disconnectAllSignals() {
-        _disconnect(
-            this._storage.filter(_signalIsConnected)
-        );
+    disconnectAllSignals: function() {
+        this._storage.filter(this._signalIsConnected).forEach(x => x[1].disconnect(x[3]));
+
         this._storage = [];
     }
 }

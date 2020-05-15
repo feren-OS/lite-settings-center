@@ -503,10 +503,9 @@ Keyboard.prototype = {
 
     shouldTakeEvent: function(event) {
         let actor = event.get_source();
-        return !actor.is_finalized()
-            && (Main.layoutManager.keyboardBox.contains(actor)
-                || actor.maybeGet("_extended_keys")
-                || actor.maybeGet("extended_key"));
+        return Main.layoutManager.keyboardBox.contains(actor) ||
+               actor.maybeGet("_extended_keys") ||
+               actor.maybeGet("extended_key");
     },
 
     // D-Bus methods
